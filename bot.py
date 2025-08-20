@@ -578,17 +578,31 @@ class TelegramBot:
             reply_markup=keyboard
         )
 
-    def run(self):
+    async def run(self):
         """Запуск бота"""
         logger.info("Запуск Telegram бота...")
         
         try:
-            # Запускаем бота синхронно
-            self.application.run_polling(drop_pending_updates=True)
+            # Инициализируем приложение
+            await self.application.initialize()
+            
+            # Запускаем бота асинхронно
+            await self.application.start()
+            
+            # Запускаем polling
+            await self.application.updater.start_polling(drop_pending_updates=True)
+            
+            # Ждем, пока бот работает
+            await self.application.updater.idle()
             
         except Exception as e:
             logger.error(f"Ошибка при запуске бота: {e}")
             raise
+        finally:
+            # Корректная остановка
+            await self.application.updater.stop()
+            await self.application.stop()
+            await self.application.shutdown()
 
 def main():
     """Главная функция"""
