@@ -5,10 +5,28 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      # Монтируем директорию для логов (опционально)
+      - ./logs:/app/logs
+    networks:
+      - bot-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  webhook-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.webhook
+    container_name: webhook-server
+    restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "8080:8080"
     volumes:
-      # Монтируем директорию для логов (опционально)
       - ./logs:/app/logs
     networks:
       - bot-network
@@ -23,6 +41,8 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    depends_on:
+      - telegram-bot
 
 networks:
   bot-network:

@@ -94,16 +94,20 @@ if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/
     exit 1
 fi
 
-# Проверяем существование контейнера
+# Проверяем существование контейнеров
 if ! docker ps -a --format "table {{.Names}}" | grep -q "telegram-bot"; then
     echo -e "${RED}❌ Контейнер telegram-bot не найден!${NC}"
     echo -e "${YELLOW}🚀 Запустите бота: ./start.sh${NC}"
     exit 1
 fi
 
-# Основная информация о контейнере
-echo -e "${BLUE}📊 Информация о контейнере:${NC}"
-container_status=$(docker inspect telegram-bot --format='{{.State.Status}}' 2>/dev/null)
+# Основная информация о контейнерах
+echo -e "${BLUE}📊 Информация о контейнерах:${NC}"
+bot_status=$(docker inspect telegram-bot --format='{{.State.Status}}' 2>/dev/null)
+webhook_status=$(docker inspect webhook-server --format='{{.State.Status}}' 2>/dev/null || echo "not_found")
+
+echo -e "${BLUE}🤖 Telegram Bot:${NC}"
+container_status=$bot_status
 
 case $container_status in
     "running")
@@ -137,6 +141,28 @@ if [ "$container_status" = "running" ]; then
     check_memory
     check_cpu
     check_uptime
+
+echo ""
+echo -e "${BLUE}🌐 Webhook Server:${NC}"
+case $webhook_status in
+    "running")
+        echo -e "${GREEN}✅ Статус: Запущен${NC}"
+        ;;
+    "exited")
+        echo -e "${RED}❌ Статус: Остановлен${NC}"
+        webhook_exit_code=$(docker inspect webhook-server --format='{{.State.ExitCode}}' 2>/dev/null)
+        echo -e "${RED}   Exit code: $webhook_exit_code${NC}"
+        ;;
+    "restarting")
+        echo -e "${YELLOW}🔄 Статус: Перезапускается${NC}"
+        ;;
+    "not_found")
+        echo -e "${YELLOW}⚠️  Статус: Не найден (будет создан при запуске)${NC}"
+        ;;
+    *)
+        echo -e "${RED}❌ Статус: $webhook_status${NC}"
+        ;;
+esac
     
     echo ""
     
