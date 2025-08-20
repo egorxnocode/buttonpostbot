@@ -22,7 +22,7 @@ if ! docker-compose ps | grep -q "telegram-bot"; then
 fi
 
 # Проверяем статус контейнера
-container_status=$(docker-compose ps | grep telegram-bot | awk '{print $NF}' | grep -o 'Up\|Restarting\|Exited' || echo "NotFound")
+container_status=$(docker-compose ps | grep telegram-bot | grep -o 'Up\|Restarting\|Exited' | head -1 || echo "NotFound")
 
 if [ "$container_status" = "NotFound" ]; then
     echo -e "${RED}❌ Контейнер telegram-bot не найден!${NC}"
