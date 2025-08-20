@@ -17,7 +17,7 @@ class BotApplication:
         self.webhook_runner = None
         self.running = True
 
-    async def start(self):
+    def start(self):
         """Запуск бота"""
         try:
             logger.info("Запуск приложения...")
@@ -103,8 +103,8 @@ def main():
     app = BotApplication()
     
     try:
-        # Запускаем синхронно
-        asyncio.run(app.start())
+        # Запускаем синхронно БЕЗ asyncio
+        app.start()
     except KeyboardInterrupt:
         logger.info("Получен сигнал остановки от пользователя")
     except Exception as e:
