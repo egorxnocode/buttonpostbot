@@ -22,21 +22,65 @@ class BotApplication:
         try:
             logger.info("Запуск приложения...")
             
+            # Создаем задачи для параллельного выполнения
+            tasks = []
+            
             # Запускаем веб-сервер для webhook
-            self.webhook_runner = await run_webhook_server(port=8080)
+            logger.info("Запуск webhook сервера...")
+            webhook_task = asyncio.create_task(self._run_webhook_server())
+            tasks.append(webhook_task)
             
             # Создаем и запускаем бота
+            logger.info("Инициализация Telegram бота...")
             self.bot = TelegramBot()
             
-            # Запускаем бота асинхронно
-            await self.bot.run()
+            # Запускаем бота в отдельной задаче
+            logger.info("Запуск Telegram бота...")
+            bot_task = asyncio.create_task(self._run_bot())
+            tasks.append(bot_task)
             
             logger.info("Приложение запущено успешно")
             logger.info("Webhook сервер: http://0.0.0.0:8080")
             logger.info("Telegram бот: активен")
             
+            # Ждем завершения любой задачи (обычно по ошибке)
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            
+            # Отменяем оставшиеся задачи
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Проверяем, была ли ошибка в завершившейся задаче
+            for task in done:
+                if task.exception():
+                    raise task.exception()
+                    
         except Exception as e:
             logger.error(f"Ошибка при запуске приложения: {e}")
+            raise
+    
+    async def _run_webhook_server(self):
+        """Запуск webhook сервера"""
+        self.webhook_runner = await run_webhook_server(port=8080)
+        
+        # Ждем бесконечно, пока сервер работает
+        try:
+            while self.running:
+                await asyncio.sleep(1)
+        except asyncio.CancelledError:
+            logger.info("Webhook сервер получил сигнал остановки")
+            raise
+    
+    async def _run_bot(self):
+        """Запуск Telegram бота"""
+        try:
+            await self.bot.run()
+        except Exception as e:
+            logger.error(f"Ошибка в Telegram боте: {e}")
             raise
 
     async def stop(self):
