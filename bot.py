@@ -747,13 +747,36 @@ class TelegramBot:
             )
             return
         
-        # Сохраняем тип кнопки и обновляем статус
+        # Сохраняем тип кнопки
         await self.db.update_button_data(active_session['id'], button_type=button_type)
-        await self.db.update_session_status(active_session['id'], 'button_config')
         
         if button_type == "dm":
-            await query.edit_message_text(MESSAGES['button_dm_username_request'])
+            # Автоматически используем username текущего пользователя
+            user_data = await self.db.get_user_by_telegram_id(user.id)
+            if user_data and user_data.get('username'):
+                # Формируем URL для ЛС с username пользователя
+                button_url = format_telegram_dm_url(user_data['username'])
+                
+                # Сохраняем URL кнопки и переходим к выбору текста
+                await self.db.update_button_data(active_session['id'], button_url=button_url)
+                await self.db.update_session_status(active_session['id'], 'button_text_selection')
+                
+                await query.edit_message_text(
+                    f"💬 Кнопка будет вести к @{user_data['username']}\n\n"
+                    f"Теперь выберите текст для кнопки:"
+                )
+                
+                # Показываем выбор текста кнопки
+                await asyncio.sleep(1)
+                await self._show_button_text_selection(query.message, button_type)
+                
+                logger.info(f"Автоматически установлен DM URL для сессии {active_session['id']}: {button_url}")
+            else:
+                # Fallback: если нет username, спрашиваем вручную
+                await self.db.update_session_status(active_session['id'], 'button_config')
+                await query.edit_message_text(MESSAGES['button_dm_username_request'])
         else:  # website
+            await self.db.update_session_status(active_session['id'], 'button_config')
             await query.edit_message_text(MESSAGES['button_website_url_request'])
         
         logger.info(f"Выбран тип кнопки {button_type} для сессии {active_session['id']}")
