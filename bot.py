@@ -592,8 +592,8 @@ class TelegramBot:
             # Запускаем polling
             await self.application.updater.start_polling(drop_pending_updates=True)
             
-            # Ждем, пока бот работает
-            await self.application.updater.idle()
+            # Ждем, пока бот работает (используем правильный метод)
+            await self.application.idle()
             
         except Exception as e:
             logger.error(f"Ошибка при запуске бота: {e}")
