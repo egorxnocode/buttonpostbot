@@ -64,12 +64,19 @@ CREATE TABLE button_post_creation_sessions (
     -- question_3: ожидает ответ на вопрос 3
     -- generating: отправлен запрос в n8n
     -- reviewing: пост на проверке у пользователя
+    -- button_type_selection: выбор типа кнопки (личка/сайт)
+    -- button_config: настройка параметров кнопки
+    -- button_text_selection: выбор текста кнопки
+    -- final_review: финальный просмотр поста с кнопкой
     -- completed: процесс завершен
     -- cancelled: процесс отменен
     answer_1 TEXT,
     answer_2 TEXT,
     answer_3 TEXT,
     generated_post TEXT,
+    button_type VARCHAR(20), -- 'dm' или 'website'
+    button_url TEXT, -- ссылка для кнопки
+    button_text VARCHAR(100), -- текст кнопки
     n8n_webhook_sent_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -94,5 +101,8 @@ COMMENT ON COLUMN button_post_creation_sessions.answer_1 IS 'Ответ на п�
 COMMENT ON COLUMN button_post_creation_sessions.answer_2 IS 'Ответ на второй вопрос';
 COMMENT ON COLUMN button_post_creation_sessions.answer_3 IS 'Ответ на третий вопрос';
 COMMENT ON COLUMN button_post_creation_sessions.generated_post IS 'Сгенерированный n8n текст поста';
+COMMENT ON COLUMN button_post_creation_sessions.button_type IS 'Тип кнопки: dm (личные сообщения) или website (сайт)';
+COMMENT ON COLUMN button_post_creation_sessions.button_url IS 'URL для кнопки (ссылка на пользователя или веб-сайт)';
+COMMENT ON COLUMN button_post_creation_sessions.button_text IS 'Текст кнопки';
 COMMENT ON COLUMN button_post_creation_sessions.n8n_webhook_sent_at IS 'Время отправки запроса в n8n';
 COMMENT ON COLUMN button_post_creation_sessions.expires_at IS 'Время истечения сессии';

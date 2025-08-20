@@ -447,3 +447,94 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка при получении просроченных сессий: {e}")
             return []
+
+    async def update_button_data(self, session_id: int, button_type: str = None, 
+                                button_url: str = None, button_text: str = None) -> bool:
+        """
+        Обновление данных кнопки в сессии
+        
+        Args:
+            session_id (int): ID сессии
+            button_type (str): Тип кнопки ('dm' или 'website')
+            button_url (str): URL кнопки
+            button_text (str): Текст кнопки
+            
+        Returns:
+            bool: True если обновление успешно
+        """
+        try:
+            update_data = {}
+            
+            if button_type is not None:
+                update_data['button_type'] = button_type
+            if button_url is not None:
+                update_data['button_url'] = button_url
+            if button_text is not None:
+                update_data['button_text'] = button_text
+            
+            if not update_data:
+                return True  # Нет данных для обновления
+            
+            result = self.supabase.table('button_post_creation_sessions').update(
+                update_data
+            ).eq('id', session_id).execute()
+            
+            if result.data:
+                logger.info(f"Обновлены данные кнопки в сессии {session_id}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении данных кнопки в сессии {session_id}: {e}")
+            return False
+
+    async def get_session_button_data(self, session_id: int) -> Optional[Dict[str, str]]:
+        """
+        Получение данных кнопки из сессии
+        
+        Args:
+            session_id (int): ID сессии
+            
+        Returns:
+            Dict: Данные кнопки или None
+        """
+        try:
+            result = self.supabase.table('button_post_creation_sessions').select(
+                'button_type, button_url, button_text'
+            ).eq('id', session_id).execute()
+            
+            if result.data and len(result.data) > 0:
+                data = result.data[0]
+                return {
+                    'button_type': data.get('button_type'),
+                    'button_url': data.get('button_url'),
+                    'button_text': data.get('button_text')
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении данных кнопки из сессии {session_id}: {e}")
+            return None
+
+    async def get_active_post_session_by_id(self, session_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Получение сессии по ID
+        
+        Args:
+            session_id (int): ID сессии
+            
+        Returns:
+            Dict: Данные сессии или None
+        """
+        try:
+            result = self.supabase.table('button_post_creation_sessions').select('*').eq(
+                'id', session_id
+            ).execute()
+            
+            if result.data and len(result.data) > 0:
+                return result.data[0]
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении сессии по ID {session_id}: {e}")
+            return None

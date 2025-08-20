@@ -176,3 +176,88 @@ def clean_text(text: str) -> str:
     cleaned = re.sub(r'\s+', ' ', text.strip())
     
     return cleaned
+
+def is_valid_url(url: str) -> bool:
+    """
+    Проверка валидности URL
+    
+    Args:
+        url (str): URL для проверки
+        
+    Returns:
+        bool: True если URL валиден
+    """
+    try:
+        return validators.url(url)
+    except Exception:
+        return False
+
+def is_valid_username_or_userid(text: str) -> bool:
+    """
+    Проверка валидности username или user_id
+    
+    Args:
+        text (str): Текст для проверки
+        
+    Returns:
+        bool: True если это валидный username или user_id
+    """
+    text = text.strip()
+    
+    # Проверяем что это число (user_id)
+    if text.isdigit():
+        return True
+    
+    # Проверяем что это валидный username (буквы, цифры, подчеркивания)
+    username_pattern = r'^[a-zA-Z0-9_]{5,32}$'
+    if re.match(username_pattern, text):
+        return True
+    
+    return False
+
+def format_telegram_dm_url(username_or_id: str) -> str:
+    """
+    Форматирование URL для личных сообщений в Telegram
+    
+    Args:
+        username_or_id (str): Username или user_id
+        
+    Returns:
+        str: Сформированный URL
+    """
+    username_or_id = username_or_id.strip()
+    
+    # Если это число (user_id)
+    if username_or_id.isdigit():
+        return f"tg://user?id={username_or_id}"
+    
+    # Если это username (убираем @ если есть)
+    username = username_or_id.lstrip('@')
+    return f"https://t.me/{username}"
+
+def get_default_button_texts(button_type: str) -> list:
+    """
+    Получение списка стандартных текстов для кнопок
+    
+    Args:
+        button_type (str): Тип кнопки ('dm' или 'website')
+        
+    Returns:
+        list: Список текстов кнопок
+    """
+    if button_type == 'dm':
+        return [
+            "💬 Написать в ЛС",
+            "📩 Связаться с нами",
+            "💌 Задать вопрос",
+            "🗣 Обратиться к автору"
+        ]
+    elif button_type == 'website':
+        return [
+            "🌐 Перейти на сайт",
+            "📖 Узнать больше",
+            "🛒 Купить сейчас",
+            "📋 Подробности"
+        ]
+    else:
+        return ["📝 Подробнее"]

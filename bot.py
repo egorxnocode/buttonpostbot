@@ -29,7 +29,11 @@ from utils import (
     extract_channel_info,
     is_valid_channel_url,
     format_user_info,
-    get_registration_step_name
+    get_registration_step_name,
+    is_valid_url,
+    is_valid_username_or_userid,
+    format_telegram_dm_url,
+    get_default_button_texts
 )
 from n8n_client import N8NClient
 from admin_notifier import AdminNotifier
@@ -146,7 +150,20 @@ class TelegramBot:
             
             if active_session:
                 # Обрабатываем ответ в рамках сессии создания поста
-                await self._handle_post_creation_answer(update, message_text, user_data, active_session)
+                session_status = active_session['session_status']
+                
+                if session_status in ['question_1', 'question_2', 'question_3']:
+                    await self._handle_post_creation_answer(update, message_text, user_data, active_session)
+                elif session_status == 'button_config':
+                    await self._handle_button_config_input(update, message_text, user_data, active_session)
+                elif session_status == 'button_text_selection':
+                    await self._handle_custom_button_text_input(update, message_text, user_data, active_session)
+                else:
+                    await update.message.reply_text(
+                        "🤔 Не понимаю, что вы хотите сделать на данном этапе.\n\n"
+                        "Используйте кнопки для продолжения.",
+                        reply_markup=self._get_registered_user_keyboard()
+                    )
             else:
                 # Пользователь найден, обрабатываем в зависимости от этапа регистрации
                 step = user_data['registration_step']
@@ -273,6 +290,18 @@ class TelegramBot:
             await self._handle_post_approval(query, user)
         elif query.data == "post_rejected":
             await self._handle_post_rejection(query, user)
+        elif query.data == "button_type_dm":
+            await self._handle_button_type_selection(query, user, "dm")
+        elif query.data == "button_type_website":
+            await self._handle_button_type_selection(query, user, "website")
+        elif query.data.startswith("button_text_"):
+            await self._handle_button_text_selection(query, user, query.data)
+        elif query.data == "button_text_custom":
+            await self._handle_custom_button_text_request(query, user)
+        elif query.data == "final_post_approved":
+            await self._handle_final_post_approval(query, user)
+        elif query.data == "final_post_rejected":
+            await self._handle_final_post_rejection(query, user)
 
     async def _check_admin_rights(self, query, user):
         """Проверка прав администратора бота в канале"""
@@ -482,20 +511,16 @@ class TelegramBot:
             )
             return
         
-        # Обновляем статус сессии
-        await self.db.update_session_status(active_session['id'], 'completed')
+        # Обновляем статус сессии на выбор типа кнопки
+        await self.db.update_session_status(active_session['id'], 'button_type_selection')
         
         await query.edit_message_text(MESSAGES['post_approved'])
         
-        # Здесь будет логика публикации поста в канале
-        # Пока что просто показываем успешное завершение
-        await asyncio.sleep(2)
-        await query.message.reply_text(
-            "🎉 Пост успешно опубликован в вашем канале!",
-            reply_markup=self._get_registered_user_keyboard()
-        )
+        # Показываем выбор типа кнопки
+        await asyncio.sleep(1)
+        await self._show_button_type_selection(query.message, active_session['id'])
         
-        logger.info(f"Пост одобрен и опубликован для сессии {active_session['id']}")
+        logger.info(f"Пост одобрен, переход к настройке кнопки для сессии {active_session['id']}")
 
     async def _handle_post_rejection(self, query, user):
         """Обработка отклонения поста пользователем"""
@@ -694,6 +719,367 @@ class TelegramBot:
             
         except Exception as e:
             logger.error(f"Ошибка при проверке состояния создания поста: {e}")
+            return False
+
+    async def _show_button_type_selection(self, message, session_id: int):
+        """Показать выбор типа кнопки"""
+        keyboard = [
+            [
+                InlineKeyboardButton("💬 В личные сообщения", callback_data="button_type_dm"),
+                InlineKeyboardButton("🌐 На сайт", callback_data="button_type_website")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await message.reply_text(
+            MESSAGES['button_type_selection'],
+            reply_markup=reply_markup
+        )
+
+    async def _handle_button_type_selection(self, query, user, button_type: str):
+        """Обработка выбора типа кнопки"""
+        
+        # Получаем активную сессию
+        active_session = await self.db.get_active_post_session(user.id)
+        
+        if not active_session or active_session['session_status'] != 'button_type_selection':
+            await query.edit_message_text(
+                "❌ Сессия не найдена или завершена.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        # Сохраняем тип кнопки и обновляем статус
+        await self.db.update_button_data(active_session['id'], button_type=button_type)
+        await self.db.update_session_status(active_session['id'], 'button_config')
+        
+        if button_type == "dm":
+            await query.edit_message_text(MESSAGES['button_dm_username_request'])
+        else:  # website
+            await query.edit_message_text(MESSAGES['button_website_url_request'])
+        
+        logger.info(f"Выбран тип кнопки {button_type} для сессии {active_session['id']}")
+
+    async def _handle_button_config_input(self, update, message_text: str, user_data: dict, active_session: dict):
+        """Обработка ввода параметров кнопки (URL или username)"""
+        
+        session_id = active_session['id']
+        
+        # Получаем тип кнопки
+        button_data = await self.db.get_session_button_data(session_id)
+        if not button_data or not button_data['button_type']:
+            await update.message.reply_text(
+                "❌ Ошибка: тип кнопки не определен.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        button_type = button_data['button_type']
+        input_text = message_text.strip()
+        
+        if button_type == "dm":
+            # Проверяем username или user_id
+            if not is_valid_username_or_userid(input_text):
+                await update.message.reply_text(
+                    "❌ Неверный формат username или user_id.\n\n"
+                    "Отправьте username (без @) или числовой user_id.\n\n"
+                    "Например: username или 123456789"
+                )
+                return
+            
+            # Формируем URL для ЛС
+            button_url = format_telegram_dm_url(input_text)
+            
+        else:  # website
+            # Проверяем URL
+            if not is_valid_url(input_text):
+                await update.message.reply_text(MESSAGES['invalid_url'])
+                return
+            
+            button_url = input_text
+        
+        # Сохраняем URL кнопки
+        await self.db.update_button_data(session_id, button_url=button_url)
+        await self.db.update_session_status(session_id, 'button_text_selection')
+        
+        # Показываем выбор текста кнопки
+        await self._show_button_text_selection(update.message, button_type)
+        
+        logger.info(f"Сохранен URL кнопки для сессии {session_id}: {button_url}")
+
+    async def _show_button_text_selection(self, message, button_type: str):
+        """Показать выбор текста для кнопки"""
+        
+        button_texts = get_default_button_texts(button_type)
+        
+        keyboard = []
+        for i, text in enumerate(button_texts):
+            keyboard.append([InlineKeyboardButton(text, callback_data=f"button_text_{i}")])
+        
+        # Добавляем кнопку для ввода своего варианта
+        keyboard.append([InlineKeyboardButton("✏️ Ввести свой текст", callback_data="button_text_custom")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await message.reply_text(
+            MESSAGES['button_text_selection'],
+            reply_markup=reply_markup
+        )
+
+    async def _handle_button_text_selection(self, query, user, callback_data: str):
+        """Обработка выбора готового текста кнопки"""
+        
+        # Получаем активную сессию
+        active_session = await self.db.get_active_post_session(user.id)
+        
+        if not active_session or active_session['session_status'] != 'button_text_selection':
+            await query.edit_message_text(
+                "❌ Сессия не найдена или завершена.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        # Извлекаем индекс из callback_data
+        text_index = int(callback_data.split('_')[-1])
+        
+        # Получаем тип кнопки
+        button_data = await self.db.get_session_button_data(active_session['id'])
+        button_type = button_data['button_type']
+        
+        # Получаем выбранный текст
+        button_texts = get_default_button_texts(button_type)
+        if text_index < len(button_texts):
+            selected_text = button_texts[text_index]
+            
+            # Сохраняем текст кнопки
+            await self.db.update_button_data(active_session['id'], button_text=selected_text)
+            await self.db.update_session_status(active_session['id'], 'final_review')
+            
+            await query.edit_message_text(f"✅ Выбран текст кнопки: \"{selected_text}\"")
+            
+            # Показываем финальный предпросмотр
+            await asyncio.sleep(1)
+            await self._show_final_post_preview(query.message, active_session['id'])
+            
+            logger.info(f"Выбран текст кнопки для сессии {active_session['id']}: {selected_text}")
+
+    async def _handle_custom_button_text_request(self, query, user):
+        """Запрос на ввод собственного текста кнопки"""
+        
+        # Получаем активную сессию
+        active_session = await self.db.get_active_post_session(user.id)
+        
+        if not active_session or active_session['session_status'] != 'button_text_selection':
+            await query.edit_message_text(
+                "❌ Сессия не найдена или завершена.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        await query.edit_message_text(
+            "✏️ Отправьте свой вариант текста для кнопки.\n\n"
+            "Например: \"Заказать консультацию\" или \"Узнать цену\""
+        )
+
+    async def _handle_custom_button_text_input(self, update, message_text: str, user_data: dict, active_session: dict):
+        """Обработка ввода собственного текста кнопки"""
+        
+        session_id = active_session['id']
+        button_text = message_text.strip()
+        
+        # Проверяем длину текста
+        if len(button_text) > 100:
+            await update.message.reply_text(
+                "❌ Текст кнопки слишком длинный. Максимум 100 символов.\n\n"
+                "Попробуйте сократить текст."
+            )
+            return
+        
+        if len(button_text) < 1:
+            await update.message.reply_text(
+                "❌ Текст кнопки не может быть пустым.\n\n"
+                "Введите текст для кнопки."
+            )
+            return
+        
+        # Сохраняем текст кнопки
+        await self.db.update_button_data(session_id, button_text=button_text)
+        await self.db.update_session_status(session_id, 'final_review')
+        
+        await update.message.reply_text(f"✅ Текст кнопки сохранен: \"{button_text}\"")
+        
+        # Показываем финальный предпросмотр
+        await asyncio.sleep(1)
+        await self._show_final_post_preview(update.message, session_id)
+        
+        logger.info(f"Сохранен собственный текст кнопки для сессии {session_id}: {button_text}")
+
+    async def _show_final_post_preview(self, message, session_id: int):
+        """Показать финальный предпросмотр поста с кнопкой"""
+        
+        try:
+            # Получаем данные сессии
+            session = await self.db.get_active_post_session_by_id(session_id)
+            if not session:
+                await message.reply_text(
+                    "❌ Ошибка при получении данных сессии.",
+                    reply_markup=self._get_registered_user_keyboard()
+                )
+                return
+            
+            # Получаем данные кнопки
+            button_data = await self.db.get_session_button_data(session_id)
+            if not button_data or not all([button_data['button_text'], button_data['button_url']]):
+                await message.reply_text(
+                    "❌ Ошибка: данные кнопки неполные.",
+                    reply_markup=self._get_registered_user_keyboard()
+                )
+                return
+            
+            # Формируем предпросмотр
+            post_content = session['generated_post']
+            
+            # Создаем кнопку для предпросмотра (не функциональную)
+            preview_keyboard = [[
+                InlineKeyboardButton(button_data['button_text'], url=button_data['button_url'])
+            ]]
+            preview_markup = InlineKeyboardMarkup(preview_keyboard)
+            
+            # Отправляем предпросмотр поста
+            await message.reply_text(
+                post_content,
+                reply_markup=preview_markup,
+                parse_mode='HTML'
+            )
+            
+            # Спрашиваем подтверждение
+            confirmation_keyboard = [
+                [
+                    InlineKeyboardButton("✅ Окей", callback_data="final_post_approved"),
+                    InlineKeyboardButton("❌ Нет", callback_data="final_post_rejected")
+                ]
+            ]
+            confirmation_markup = InlineKeyboardMarkup(confirmation_keyboard)
+            
+            await message.reply_text(
+                "Вот так будет выглядеть ваш пост. Всё верно?",
+                reply_markup=confirmation_markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Ошибка при показе финального предпросмотра: {e}")
+            await message.reply_text(
+                "❌ Произошла ошибка при формировании предпросмотра.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+
+    async def _handle_final_post_approval(self, query, user):
+        """Обработка финального одобрения поста"""
+        
+        # Получаем активную сессию
+        active_session = await self.db.get_active_post_session(user.id)
+        
+        if not active_session or active_session['session_status'] != 'final_review':
+            await query.edit_message_text(
+                "❌ Сессия не найдена или завершена.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        await query.edit_message_text("🎉 Отлично! Публикую пост в вашем канале...")
+        
+        # Публикуем пост в канале
+        success = await self._publish_post_to_channel(active_session['id'], user.id)
+        
+        if success:
+            # Завершаем сессию
+            await self.db.update_session_status(active_session['id'], 'completed')
+            
+            await query.message.reply_text(
+                MESSAGES['post_published'],
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            
+            logger.info(f"Пост успешно опубликован для сессии {active_session['id']}")
+        else:
+            await query.message.reply_text(
+                "❌ Произошла ошибка при публикации поста. Попробуйте позже.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+
+    async def _handle_final_post_rejection(self, query, user):
+        """Обработка отклонения финального поста"""
+        
+        # Получаем активную сессию
+        active_session = await self.db.get_active_post_session(user.id)
+        
+        if not active_session:
+            await query.edit_message_text(
+                "❌ Сессия не найдена.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        # Очищаем данные кнопки и возвращаемся к началу процесса создания поста
+        await self.db.update_button_data(active_session['id'], 
+                                       button_type=None, 
+                                       button_url=None, 
+                                       button_text=None)
+        await self.db.clear_session_answers(active_session['id'])
+        
+        await query.edit_message_text(MESSAGES['post_rejected'])
+        
+        # Начинаем процесс заново
+        await asyncio.sleep(1)
+        await query.message.reply_text(MESSAGES['post_creation_start'])
+        await asyncio.sleep(1)
+        await query.message.reply_text(MESSAGES['question_1'])
+        
+        logger.info(f"Финальный пост отклонен, начат новый процесс для сессии {active_session['id']}")
+
+    async def _publish_post_to_channel(self, session_id: int, user_telegram_id: int) -> bool:
+        """Публикация поста в канале пользователя"""
+        
+        try:
+            # Получаем данные пользователя
+            user_data = await self.db.get_user_by_telegram_id(user_telegram_id)
+            if not user_data or not user_data.get('channel_url'):
+                logger.error(f"Данные пользователя или канала не найдены для {user_telegram_id}")
+                return False
+            
+            # Получаем данные сессии
+            session = await self.db.get_active_post_session_by_id(session_id)
+            if not session:
+                logger.error(f"Сессия {session_id} не найдена")
+                return False
+            
+            # Получаем данные кнопки
+            button_data = await self.db.get_session_button_data(session_id)
+            if not button_data:
+                logger.error(f"Данные кнопки для сессии {session_id} не найдены")
+                return False
+            
+            # Извлекаем username канала
+            channel_username = user_data['channel_url'].split('/')[-1]
+            
+            # Создаем инлайн-клавиатуру
+            keyboard = [[
+                InlineKeyboardButton(button_data['button_text'], url=button_data['button_url'])
+            ]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Публикуем пост
+            await self.application.bot.send_message(
+                chat_id=f"@{channel_username}",
+                text=session['generated_post'],
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка при публикации поста в канале: {e}")
             return False
 
     def run(self):
