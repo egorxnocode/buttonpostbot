@@ -78,7 +78,18 @@ class BotApplication:
     async def _run_bot(self):
         """Запуск Telegram бота"""
         try:
-            await self.bot.run()
+            # Используем синхронный метод в отдельном потоке
+            import asyncio
+            import concurrent.futures
+            
+            def run_bot_sync():
+                self.bot.application.run_polling(drop_pending_updates=True)
+            
+            # Запускаем в отдельном thread pool
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                await loop.run_in_executor(executor, run_bot_sync)
+                
         except Exception as e:
             logger.error(f"Ошибка в Telegram боте: {e}")
             raise

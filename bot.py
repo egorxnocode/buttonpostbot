@@ -578,13 +578,13 @@ class TelegramBot:
             reply_markup=keyboard
         )
 
-    async def run(self):
+    def run(self):
         """Запуск бота"""
         logger.info("Запуск Telegram бота...")
         
         try:
-            # Используем встроенный run_polling который правильно управляет lifecycle
-            await self.application.run_polling(drop_pending_updates=True)
+            # Используем синхронный run_polling
+            self.application.run_polling(drop_pending_updates=True)
             
         except Exception as e:
             logger.error(f"Ошибка при запуске бота: {e}")
