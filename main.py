@@ -18,46 +18,20 @@ class BotApplication:
         self.running = True
 
     async def start(self):
-        """Запуск бота и веб-сервера"""
+        """Запуск бота"""
         try:
             logger.info("Запуск приложения...")
             
-            # Создаем задачи для параллельного выполнения
-            tasks = []
-            
-            # Запускаем веб-сервер для webhook
-            logger.info("Запуск webhook сервера...")
-            webhook_task = asyncio.create_task(self._run_webhook_server())
-            tasks.append(webhook_task)
-            
-            # Создаем и запускаем бота
+            # Создаем и запускаем только бота (БЕЗ webhook сервера)
             logger.info("Инициализация Telegram бота...")
             self.bot = TelegramBot()
             
-            # Запускаем бота в отдельной задаче
             logger.info("Запуск Telegram бота...")
-            bot_task = asyncio.create_task(self._run_bot())
-            tasks.append(bot_task)
-            
             logger.info("Приложение запущено успешно")
-            logger.info("Webhook сервер: http://0.0.0.0:8080")
             logger.info("Telegram бот: активен")
             
-            # Ждем завершения любой задачи (обычно по ошибке)
-            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-            
-            # Отменяем оставшиеся задачи
-            for task in pending:
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-            
-            # Проверяем, была ли ошибка в завершившейся задаче
-            for task in done:
-                if task.exception():
-                    raise task.exception()
+            # Запускаем бота напрямую (синхронно)
+            self.bot.run()
                     
         except Exception as e:
             logger.error(f"Ошибка при запуске приложения: {e}")
@@ -118,7 +92,7 @@ def setup_signal_handlers(app):
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-async def main():
+def main():
     """Главная функция"""
     # Настройка логирования
     logging.basicConfig(
@@ -127,21 +101,19 @@ async def main():
     )
     
     app = BotApplication()
-    setup_signal_handlers(app)
     
     try:
-        await app.start()
+        # Запускаем синхронно
+        asyncio.run(app.start())
     except KeyboardInterrupt:
         logger.info("Получен сигнал остановки от пользователя")
     except Exception as e:
         logger.error(f"Критическая ошибка: {e}")
         sys.exit(1)
-    finally:
-        await app.stop()
 
 if __name__ == "__main__":
     try:
-        asyncio.run(main())
+        main()
     except KeyboardInterrupt:
         logger.info("Приложение остановлено пользователем")
     except Exception as e:
