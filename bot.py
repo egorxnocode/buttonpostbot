@@ -583,26 +583,12 @@ class TelegramBot:
         logger.info("Запуск Telegram бота...")
         
         try:
-            # Инициализируем приложение
-            await self.application.initialize()
-            
-            # Запускаем бота асинхронно
-            await self.application.start()
-            
-            # Запускаем polling
-            await self.application.updater.start_polling(drop_pending_updates=True)
-            
-            # Ждем, пока бот работает (используем правильный метод)
-            await self.application.idle()
+            # Используем встроенный run_polling который правильно управляет lifecycle
+            await self.application.run_polling(drop_pending_updates=True)
             
         except Exception as e:
             logger.error(f"Ошибка при запуске бота: {e}")
             raise
-        finally:
-            # Корректная остановка
-            await self.application.updater.stop()
-            await self.application.stop()
-            await self.application.shutdown()
 
 def main():
     """Главная функция"""
