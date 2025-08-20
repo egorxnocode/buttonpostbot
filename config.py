@@ -24,6 +24,9 @@ N8N_WEBHOOK_URL = os.getenv('N8N_WEBHOOK_URL')
 ADMIN_BOT_TOKEN = os.getenv('ADMIN_BOT_TOKEN')
 ADMIN_CHAT_ID = os.getenv('ADMIN_CHAT_ID')
 
+# OpenAI для транскрибации голосовых сообщений
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+
 # Сообщения бота
 MESSAGES = {
     'welcome': """

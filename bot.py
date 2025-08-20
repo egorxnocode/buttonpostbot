@@ -33,6 +33,7 @@ from utils import (
 )
 from n8n_client import N8NClient
 from admin_notifier import AdminNotifier
+from voice_transcriber import VoiceTranscriber
 
 # Настройка логирования
 logging.basicConfig(
@@ -50,6 +51,7 @@ class TelegramBot:
         self.db = Database()
         self.n8n_client = N8NClient()
         self.admin_notifier = AdminNotifier()
+        self.voice_transcriber = VoiceTranscriber()
         self.application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         self.bot_username = None
         
@@ -71,6 +73,12 @@ class TelegramBot:
         self.application.add_handler(MessageHandler(
             filters.TEXT & ~filters.COMMAND, 
             self.handle_message
+        ))
+        
+        # Обработчик голосовых сообщений
+        self.application.add_handler(MessageHandler(
+            filters.VOICE, 
+            self.handle_voice_message
         ))
         
         logger.info("Обработчики команд настроены")
@@ -577,6 +585,99 @@ class TelegramBot:
             reminder_message.strip(),
             reply_markup=keyboard
         )
+
+    async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработчик голосовых сообщений"""
+        user = update.effective_user
+        voice = update.message.voice
+        
+        logger.info(f"Получено голосовое сообщение от пользователя: {format_user_info(user)}")
+        
+        # Проверяем, доступна ли транскрибация
+        if not self.voice_transcriber.is_available():
+            await update.message.reply_text(
+                "❌ Транскрибация голосовых сообщений недоступна. "
+                "Пожалуйста, отправьте текстовое сообщение."
+            )
+            return
+        
+        # Получаем данные пользователя
+        user_data = await self.db.get_user_by_telegram_id(user.id)
+        if not user_data:
+            await update.message.reply_text(MESSAGES['welcome'])
+            return
+        
+        # Проверяем, что пользователь находится в процессе создания поста
+        # и отвечает на один из 3 вопросов
+        if not self._is_answering_post_questions(user_data):
+            await update.message.reply_text(
+                "🎤 Голосовые сообщения принимаются только при ответе на вопросы для создания поста.\n\n"
+                "Для начала создания поста нажмите кнопку \"Написать пост\" в меню."
+            )
+            return
+        
+        # Показываем индикатор набора текста
+        await update.message.chat.send_action("typing")
+        
+        try:
+            # Получаем информацию о файле
+            file = await context.bot.get_file(voice.file_id)
+            
+            # Транскрибируем голосовое сообщение
+            transcribed_text = await self.voice_transcriber.transcribe_voice_message(
+                file.file_path, 
+                TELEGRAM_BOT_TOKEN
+            )
+            
+            if transcribed_text:
+                # Отправляем транскрибированный текст пользователю
+                await update.message.reply_text(
+                    f"🎤 Распознанный текст:\n\n\"{transcribed_text}\"\n\n"
+                    f"Обрабатываю ваш ответ..."
+                )
+                
+                # Обрабатываем транскрибированный текст как обычное текстовое сообщение
+                # Создаем временный объект сообщения с текстом
+                update.message.text = transcribed_text
+                await self.handle_message(update, context)
+                
+            else:
+                await update.message.reply_text(
+                    "❌ Не удалось распознать голосовое сообщение. "
+                    "Пожалуйста, попробуйте еще раз или отправьте текстовое сообщение."
+                )
+        
+        except Exception as e:
+            logger.error(f"Ошибка при обработке голосового сообщения: {e}")
+            await update.message.reply_text(
+                "❌ Произошла ошибка при обработке голосового сообщения. "
+                "Пожалуйста, попробуйте отправить текстовое сообщение."
+            )
+
+    def _is_answering_post_questions(self, user_data: dict) -> bool:
+        """
+        Проверяет, находится ли пользователь в процессе ответа на вопросы для создания поста
+        
+        Args:
+            user_data (dict): Данные пользователя
+            
+        Returns:
+            bool: True если пользователь отвечает на вопросы для поста
+        """
+        # Проверяем состояние пользователя в процессе создания поста
+        # Это должно соответствовать логике вашего бота для создания постов
+        
+        # Пример логики (адаптируйте под вашу систему состояний):
+        current_step = user_data.get('current_step')
+        
+        # Предполагаем, что есть состояния для 3 вопросов при создании поста
+        post_question_steps = [
+            'asking_question_1',  # Ответ на первый вопрос
+            'asking_question_2',  # Ответ на второй вопрос  
+            'asking_question_3'   # Ответ на третий вопрос
+        ]
+        
+        return current_step in post_question_steps
 
     def run(self):
         """Запуск бота"""
