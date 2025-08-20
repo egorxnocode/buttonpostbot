@@ -1,0 +1,45 @@
+# Переменные окружения и секретные данные
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Логи
+logs/
+*.log
+
+# Временные файлы
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Docker volume data
+docker-data/
+
+# Тестовые файлы
+.pytest_cache/
+.coverage
+.tox/
+
+# Архивы
+*.tar.gz
+*.zip
+
+# Другие временные файлы
+.cache/
+.mypy_cache/
