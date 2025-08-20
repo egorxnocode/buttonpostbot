@@ -634,10 +634,12 @@ class TelegramBot:
             # Получаем информацию о файле
             file = await context.bot.get_file(voice.file_id)
             
+            # Загружаем файл в байты напрямую
+            file_bytes = await file.download_as_bytearray()
+            
             # Транскрибируем голосовое сообщение
-            transcribed_text = await self.voice_transcriber.transcribe_voice_message(
-                file.file_path, 
-                TELEGRAM_BOT_TOKEN
+            transcribed_text = await self.voice_transcriber.transcribe_voice_from_bytes(
+                file_bytes
             )
             
             if transcribed_text:

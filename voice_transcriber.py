@@ -68,12 +68,53 @@ class VoiceTranscriber:
             logger.error(f"Ошибка при транскрибации: {e}")
             return None
 
-    async def _download_voice_file(self, file_url: str, bot_token: str) -> Optional[bytes]:
+    async def transcribe_voice_from_bytes(self, audio_data: bytes) -> Optional[str]:
+        """
+        Транскрибация голосового сообщения из байтов
+        
+        Args:
+            audio_data (bytes): Данные аудиофайла
+            
+        Returns:
+            Optional[str]: Транскрибированный текст или None при ошибке
+        """
+        if not self.client:
+            logger.error("OpenAI клиент не инициализирован")
+            return None
+
+        try:
+            # Создаем временный файл
+            with tempfile.NamedTemporaryFile(suffix=".oga", delete=False) as temp_file:
+                temp_file.write(audio_data)
+                temp_file_path = temp_file.name
+
+            try:
+                # Транскрибируем через OpenAI Whisper
+                with open(temp_file_path, "rb") as audio_file:
+                    transcript = await self.client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        language="ru"  # Указываем русский язык
+                    )
+                
+                logger.info(f"Транскрибация успешна: {len(transcript.text)} символов")
+                return transcript.text.strip()
+
+            finally:
+                # Удаляем временный файл
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+
+        except Exception as e:
+            logger.error(f"Ошибка при транскрибации из байтов: {e}")
+            return None
+
+    async def _download_voice_file(self, file_path: str, bot_token: str) -> Optional[bytes]:
         """
         Загрузка голосового файла с серверов Telegram
         
         Args:
-            file_url (str): URL файла
+            file_path (str): Относительный путь к файлу от Telegram API
             bot_token (str): Токен бота
             
         Returns:
@@ -81,7 +122,13 @@ class VoiceTranscriber:
         """
         try:
             # Формируем полный URL для загрузки
-            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_url}"
+            # file_path уже содержит полный URL от Telegram API
+            if file_path.startswith('https://'):
+                download_url = file_path
+            else:
+                download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+            
+            logger.info(f"Загружаем файл по URL: {download_url}")
             
             async with aiohttp.ClientSession() as session:
                 async with session.get(download_url) as response:
@@ -91,6 +138,7 @@ class VoiceTranscriber:
                         return data
                     else:
                         logger.error(f"Ошибка загрузки файла: HTTP {response.status}")
+                        logger.error(f"URL: {download_url}")
                         return None
 
         except Exception as e:
