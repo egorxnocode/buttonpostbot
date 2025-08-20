@@ -315,48 +315,23 @@ class TelegramBot:
         
         await query.edit_message_text(MESSAGES['checking_admin'])
         
-        try:
-            # Пытаемся получить информацию о канале
-            channel_username = user_data['channel_url'].split('/')[-1]
-            
-            # Проверяем права администратора
-            try:
-                chat_member = await self.application.bot.get_chat_member(
-                    f"@{channel_username}", 
-                    self.application.bot.id
-                )
-                
-                # Проверяем статус и права
-                is_admin = (
-                    chat_member.status in ['administrator', 'creator'] and
-                    getattr(chat_member, 'can_post_messages', False)
-                )
-                
-                if is_admin:
-                    # Обновляем статус в БД
-                    await self.db.update_admin_status(user.id, True)
-                    
-                    await query.edit_message_text(
-                        MESSAGES['registration_complete'],
-                        reply_markup=self._get_registered_user_keyboard()
-                    )
-                    
-                    logger.info(f"Регистрация завершена для пользователя: {format_user_info(user)}")
-                else:
-                    await self._show_not_admin_message(query)
-                    
-            except TelegramError as e:
-                if "chat not found" in str(e).lower():
-                    await query.edit_message_text(
-                        "❌ Канал не найден. Проверьте правильность ссылки и попробуйте снова."
-                    )
-                else:
-                    await self._show_not_admin_message(query)
-                    
-        except Exception as e:
-            logger.error(f"Ошибка при проверке прав администратора: {e}")
+        # Используем новую функцию проверки прав
+        admin_check_result = await self._check_admin_rights_for_channel(user_data)
+        
+        if admin_check_result['is_admin']:
+            # Права есть - завершаем регистрацию
             await query.edit_message_text(
-                "❌ Произошла ошибка при проверке прав. Попробуйте позже."
+                MESSAGES['registration_complete'],
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            
+            logger.info(f"Регистрация завершена для пользователя: {format_user_info(user)}")
+        else:
+            # Прав нет - показываем инструкции
+            await query.edit_message_text(
+                admin_check_result['message'],
+                reply_markup=admin_check_result.get('reply_markup'),
+                parse_mode='Markdown'
             )
 
     async def _handle_write_post(self, query, user):
@@ -369,6 +344,17 @@ class TelegramBot:
             await query.edit_message_text(
                 "❌ Вы не зарегистрированы или регистрация не завершена.\n\n"
                 "Используйте /start для начала регистрации."
+            )
+            return
+        
+        # Проверяем права администратора в канале перед созданием поста
+        admin_check_result = await self._check_admin_rights_for_channel(user_data)
+        
+        if not admin_check_result['is_admin']:
+            await query.edit_message_text(
+                admin_check_result['message'],
+                reply_markup=admin_check_result.get('reply_markup'),
+                parse_mode='Markdown'
             )
             return
         
@@ -390,6 +376,110 @@ class TelegramBot:
         await query.message.reply_text(MESSAGES['question_1'])
         
         logger.info(f"Начата сессия создания поста {session_id} для пользователя {format_user_info(user)}")
+
+    async def _check_admin_rights_for_channel(self, user_data: dict) -> dict:
+        """
+        Проверка прав администратора бота в канале пользователя
+        
+        Args:
+            user_data (dict): Данные пользователя из БД
+            
+        Returns:
+            dict: Результат проверки с полями is_admin, message, reply_markup
+        """
+        try:
+            if not user_data.get('channel_url'):
+                return {
+                    'is_admin': False,
+                    'message': "❌ Ошибка: данные канала не найдены. Попробуйте начать заново с /start",
+                    'reply_markup': self._get_registered_user_keyboard()
+                }
+            
+            # Извлекаем username канала
+            channel_username = user_data['channel_url'].split('/')[-1]
+            
+            # Получаем username бота если еще не получили
+            if not self.bot_username:
+                bot_info = await self.application.bot.get_me()
+                self.bot_username = bot_info.username
+            
+            # Проверяем права администратора
+            try:
+                chat_member = await self.application.bot.get_chat_member(
+                    f"@{channel_username}", 
+                    self.application.bot.id
+                )
+                
+                # Проверяем статус и права
+                is_admin = (
+                    chat_member.status in ['administrator', 'creator'] and
+                    getattr(chat_member, 'can_post_messages', False)
+                )
+                
+                if is_admin:
+                    # Обновляем статус в БД
+                    await self.db.update_admin_status(user_data['telegram_id'], True)
+                    
+                    return {
+                        'is_admin': True,
+                        'message': "✅ Права администратора подтверждены"
+                    }
+                else:
+                    # Бот не админ - даем инструкции
+                    return self._get_not_admin_response(channel_username)
+                    
+            except TelegramError as e:
+                if "chat not found" in str(e).lower():
+                    return {
+                        'is_admin': False,
+                        'message': f"❌ Канал @{channel_username} не найден.\n\nПроверьте правильность ссылки на канал или обратитесь к администратору.",
+                        'reply_markup': self._get_registered_user_keyboard()
+                    }
+                else:
+                    # Любая другая ошибка означает что бота нет в админах
+                    return self._get_not_admin_response(channel_username)
+                    
+        except Exception as e:
+            logger.error(f"Ошибка при проверке прав администратора для канала: {e}")
+            return {
+                'is_admin': False,
+                'message': "❌ Произошла ошибка при проверке прав. Попробуйте позже.",
+                'reply_markup': self._get_registered_user_keyboard()
+            }
+
+    def _get_not_admin_response(self, channel_username: str) -> dict:
+        """Получить ответ когда бот не является администратором"""
+        
+        # Создаем кнопку для повторной проверки
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ Проверить снова", callback_data="admin_added")
+        ]])
+        
+        message = f"""
+❌ **У меня нет прав администратора в канале @{channel_username}**
+
+Возможные причины:
+• Вы удалили меня из администраторов канала
+• Не дали права на публикацию сообщений
+• Канал был изменен
+
+📋 **Чтобы исправить:**
+
+1️⃣ Откройте ваш канал @{channel_username}
+2️⃣ Нажмите на название канала вверху  
+3️⃣ Выберите "Управление каналом"
+4️⃣ Нажмите "Администраторы"
+5️⃣ Найдите меня (@{self.bot_username}) или добавьте заново
+6️⃣ Убедитесь что дали права на **публикацию сообщений**
+
+После исправления нажмите "Проверить снова" 👇
+"""
+        
+        return {
+            'is_admin': False,
+            'message': message.strip(),
+            'reply_markup': keyboard
+        }
 
     async def _handle_post_creation_answer(self, update: Update, message_text: str, 
                                          user_data: dict, active_session: dict):
@@ -556,18 +646,7 @@ class TelegramBot:
         ]
         return InlineKeyboardMarkup(keyboard)
 
-    async def _show_not_admin_message(self, query):
-        """Показать сообщение о том, что бот не администратор"""
-        
-        # Создаем кнопку для повторной проверки
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ Добавлено", callback_data="admin_added")
-        ]])
-        
-        await query.edit_message_text(
-            MESSAGES['not_admin'],
-            reply_markup=keyboard
-        )
+
 
     async def _show_admin_reminder(self, update: Update, user_data: dict):
         """Показать напоминание о необходимости подтверждения прав админа"""
