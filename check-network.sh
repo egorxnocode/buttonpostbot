@@ -33,22 +33,47 @@ for url in "${urls[@]}"; do
     fi
 done
 
-# Проверяем доступность Telegram API с токеном
+# Проверяем доступность Telegram API с токенами
 echo "🤖 Тестируем Telegram API..."
-if [ -f ".env" ] && grep -q "TELEGRAM_BOT_TOKEN=" .env; then
-    token=$(grep "TELEGRAM_BOT_TOKEN=" .env | cut -d'=' -f2)
-    if [ -n "$token" ]; then
-        response=$(curl -s "https://api.telegram.org/bot$token/getMe")
-        if echo "$response" | grep -q '"ok":true'; then
-            echo "✅ Telegram API доступен"
+if [ -f ".env" ]; then
+    # Проверяем основной токен бота
+    if grep -q "TELEGRAM_BOT_TOKEN=" .env; then
+        token=$(grep "TELEGRAM_BOT_TOKEN=" .env | cut -d'=' -f2 | tr -d ' ')
+        if [ -n "$token" ]; then
+            echo "🔍 Проверяем основной токен бота..."
+            response=$(curl -s "https://api.telegram.org/bot$token/getMe")
+            if echo "$response" | grep -q '"ok":true'; then
+                bot_username=$(echo "$response" | grep -o '"username":"[^"]*"' | cut -d'"' -f4)
+                echo "✅ Основной токен работает (@$bot_username)"
+            else
+                echo "❌ Основной токен неверный или бот заблокирован"
+                echo "   Ответ API: $response"
+            fi
         else
-            echo "❌ Telegram API недоступен или неверный токен"
+            echo "⚠️  Основной токен пустой"
         fi
     else
-        echo "⚠️  Токен бота пустой"
+        echo "❌ TELEGRAM_BOT_TOKEN не найден в .env"
+    fi
+    
+    # Проверяем админский токен (опционально)
+    if grep -q "ADMIN_BOT_TOKEN=" .env; then
+        admin_token=$(grep "ADMIN_BOT_TOKEN=" .env | cut -d'=' -f2 | tr -d ' ')
+        if [ -n "$admin_token" ]; then
+            echo "🔍 Проверяем админский токен бота..."
+            admin_response=$(curl -s "https://api.telegram.org/bot$admin_token/getMe")
+            if echo "$admin_response" | grep -q '"ok":true'; then
+                admin_bot_username=$(echo "$admin_response" | grep -o '"username":"[^"]*"' | cut -d'"' -f4)
+                echo "✅ Админский токен работает (@$admin_bot_username)"
+            else
+                echo "⚠️  Админский токен неверный (не критично)"
+            fi
+        else
+            echo "ℹ️  Админский токен не задан (опционально)"
+        fi
     fi
 else
-    echo "⚠️  Файл .env не найден"
+    echo "❌ Файл .env не найден!"
 fi
 
 echo ""
