@@ -22,8 +22,18 @@ if ! docker-compose ps | grep -q "telegram-bot"; then
 fi
 
 # Проверяем статус контейнера
-if ! docker-compose ps | grep -q "Up"; then
-    echo -e "${RED}❌ Контейнер не запущен!${NC}"
+container_status=$(docker-compose ps | grep telegram-bot | awk '{print $NF}' | grep -o 'Up\|Restarting\|Exited' || echo "NotFound")
+
+if [ "$container_status" = "NotFound" ]; then
+    echo -e "${RED}❌ Контейнер telegram-bot не найден!${NC}"
+    echo -e "${YELLOW}🚀 Запустите бота: ./start.sh${NC}"
+    exit 1
+elif [ "$container_status" = "Restarting" ]; then
+    echo -e "${YELLOW}⚠️  Контейнер перезапускается (возможна ошибка)${NC}"
+    echo -e "${BLUE}🔍 Для диагностики используйте: ./debug.sh${NC}"
+    echo ""
+elif [ "$container_status" = "Exited" ]; then
+    echo -e "${RED}❌ Контейнер остановлен!${NC}"
     echo -e "${YELLOW}🚀 Запустите бота: ./start.sh${NC}"
     exit 1
 fi
