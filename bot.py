@@ -420,7 +420,7 @@ class TelegramBot:
                 return
             
             # Отправляем запрос в n8n
-            success = await self.n8n_client.send_post_generation_request(user_data, answers)
+            success = await self.n8n_client.send_post_generation_request(user_data, answers, session_id)
             
             if not success:
                 await update.message.reply_text(MESSAGES['generation_error'])

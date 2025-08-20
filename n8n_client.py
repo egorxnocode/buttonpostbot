@@ -17,13 +17,14 @@ class N8NClient:
             logger.warning("N8N_WEBHOOK_URL не установлен")
 
     async def send_post_generation_request(self, user_data: Dict[str, Any], 
-                                         answers: Dict[str, str]) -> bool:
+                                         answers: Dict[str, str], session_id: int) -> bool:
         """
         Отправка запроса на генерацию поста в n8n
         
         Args:
             user_data (Dict): Данные пользователя
             answers (Dict): Ответы на вопросы
+            session_id (int): ID сессии создания поста
             
         Returns:
             bool: True если запрос отправлен успешно
@@ -47,6 +48,7 @@ class N8NClient:
                     "additional_info": answers.get('answer_3')
                 },
                 "request_type": "generate_post",
+                "session_id": session_id,
                 "timestamp": asyncio.get_event_loop().time()
             }
 
