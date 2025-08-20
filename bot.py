@@ -296,8 +296,6 @@ class TelegramBot:
             await self._handle_button_type_selection(query, user, "website")
         elif query.data.startswith("button_text_"):
             await self._handle_button_text_selection(query, user, query.data)
-        elif query.data == "button_text_custom":
-            await self._handle_custom_button_text_request(query, user)
         elif query.data == "final_post_approved":
             await self._handle_final_post_approval(query, user)
         elif query.data == "final_post_rejected":
@@ -839,11 +837,31 @@ class TelegramBot:
             )
             return
         
-        # Извлекаем индекс из callback_data
-        text_index = int(callback_data.split('_')[-1])
+        # Проверяем, это готовый вариант или кастомный
+        if callback_data == "button_text_custom":
+            # Перенаправляем на обработку кастомного текста
+            await self._handle_custom_button_text_request(query, user)
+            return
+        
+        # Извлекаем индекс из callback_data для готовых вариантов
+        try:
+            text_index = int(callback_data.split('_')[-1])
+        except ValueError:
+            await query.edit_message_text(
+                "❌ Ошибка в данных кнопки.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
         
         # Получаем тип кнопки
         button_data = await self.db.get_session_button_data(active_session['id'])
+        if not button_data:
+            await query.edit_message_text(
+                "❌ Ошибка: данные кнопки не найдены.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+            
         button_type = button_data['button_type']
         
         # Получаем выбранный текст
@@ -862,6 +880,11 @@ class TelegramBot:
             await self._show_final_post_preview(query.message, active_session['id'])
             
             logger.info(f"Выбран текст кнопки для сессии {active_session['id']}: {selected_text}")
+        else:
+            await query.edit_message_text(
+                "❌ Ошибка: неверный индекс кнопки.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
 
     async def _handle_custom_button_text_request(self, query, user):
         """Запрос на ввод собственного текста кнопки"""
