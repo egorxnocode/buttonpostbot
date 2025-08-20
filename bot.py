@@ -613,7 +613,7 @@ class TelegramBot:
         
         if not is_answering_questions:
             # Получаем информацию о сессии для диагностики
-            active_session = await self.db.get_active_post_creation_session(user_data['telegram_id'])
+            active_session = await self.db.get_active_post_session(user_data['telegram_id'])
             session_status = active_session.get('session_status') if active_session else 'no_session'
             
             logger.info(f"Голосовое сообщение отклонено. Session status: {session_status}")
@@ -677,7 +677,7 @@ class TelegramBot:
         """
         try:
             # Получаем активную сессию создания поста для пользователя
-            active_session = await self.db.get_active_post_creation_session(user_data['telegram_id'])
+            active_session = await self.db.get_active_post_session(user_data['telegram_id'])
             
             if not active_session:
                 return False
