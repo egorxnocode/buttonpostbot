@@ -278,7 +278,7 @@ class Database:
         
         Args:
             session_id (int): ID сессии
-            answer_number (int): Номер вопроса (1, 2, 3)
+            answer_number (int): Номер вопроса (1, 2, 3, 4, 5, 6)
             answer (str): Ответ пользователя
             
         Returns:
@@ -299,8 +299,7 @@ class Database:
             elif answer_number == 5:
                 update_data['session_status'] = 'question_6'
             elif answer_number == 6:
-                update_data['session_status'] = 'generating'
-                update_data['n8n_webhook_sent_at'] = 'now()'
+                update_data['session_status'] = 'collecting_links'
             
             result = self.supabase.table('button_post_creation_sessions').update(
                 update_data
