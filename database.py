@@ -260,8 +260,9 @@ class Database:
                 'telegram_id', telegram_id
             ).in_(
                 'session_status', 
-                ['started', 'question_1', 'question_2', 'question_3', 'generating', 'reviewing', 
-                 'button_type_selection', 'button_config', 'button_text_selection', 'final_review']
+                ['started', 'question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6', 
+                 'collecting_links', 'generating', 'reviewing', 'button_type_selection', 'button_config', 
+                 'button_text_selection', 'final_review']
             ).order('created_at', desc=True).limit(1).execute()
             
             if result.data:
