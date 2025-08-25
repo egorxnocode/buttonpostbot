@@ -62,6 +62,10 @@ CREATE TABLE button_post_creation_sessions (
     -- question_1: ожидает ответ на вопрос 1
     -- question_2: ожидает ответ на вопрос 2  
     -- question_3: ожидает ответ на вопрос 3
+    -- question_4: ожидает ответ на вопрос 4
+    -- question_5: ожидает ответ на вопрос 5
+    -- question_6: ожидает ответ на вопрос 6
+    -- collecting_links: сбор ссылок (до 5 штук)
     -- generating: отправлен запрос в n8n
     -- reviewing: пост на проверке у пользователя
     -- button_type_selection: выбор типа кнопки (личка/сайт)
@@ -73,6 +77,14 @@ CREATE TABLE button_post_creation_sessions (
     answer_1 TEXT,
     answer_2 TEXT,
     answer_3 TEXT,
+    answer_4 TEXT,
+    answer_5 TEXT,
+    answer_6 TEXT,
+    link_1 TEXT, -- первая ссылка
+    link_2 TEXT, -- вторая ссылка  
+    link_3 TEXT, -- третья ссылка
+    link_4 TEXT, -- четвертая ссылка
+    link_5 TEXT, -- пятая ссылка
     generated_post TEXT,
     button_type VARCHAR(20), -- 'dm' или 'website'
     button_url TEXT, -- ссылка для кнопки

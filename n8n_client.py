@@ -17,7 +17,7 @@ class N8NClient:
             logger.warning("N8N_WEBHOOK_URL не установлен")
 
     async def send_post_generation_request(self, user_data: Dict[str, Any], 
-                                         answers: Dict[str, str], session_id: int) -> bool:
+                                         answers: Dict[str, str], links: Dict[str, str], session_id: int) -> bool:
         """
         Отправка запроса на генерацию поста в n8n
         
@@ -34,6 +34,14 @@ class N8NClient:
             return False
 
         try:
+            # Фильтруем пустые ссылки
+            filtered_links = []
+            if links:
+                for i in range(1, 6):
+                    link = links.get(f'link_{i}')
+                    if link and link.strip():
+                        filtered_links.append(link.strip())
+
             payload = {
                 "user": {
                     "telegram_id": user_data.get('telegram_id'),
@@ -43,10 +51,14 @@ class N8NClient:
                     "last_name": user_data.get('last_name')
                 },
                 "answers": {
-                    "topic": answers.get('answer_1'),
-                    "goal": answers.get('answer_2'), 
-                    "additional_info": answers.get('answer_3')
+                    "name_profession": answers.get('answer_1'),
+                    "target_clients": answers.get('answer_2'),
+                    "results_timeline": answers.get('answer_3'),
+                    "main_service": answers.get('answer_4'),
+                    "what_exclude": answers.get('answer_5'),
+                    "popular_posts": answers.get('answer_6')
                 },
+                "links": filtered_links,  # Массив со ссылками (до 5 штук)
                 "request_type": "generate_post",
                 "session_id": session_id,
                 "timestamp": asyncio.get_event_loop().time()

@@ -293,6 +293,12 @@ class Database:
             elif answer_number == 2:
                 update_data['session_status'] = 'question_3'
             elif answer_number == 3:
+                update_data['session_status'] = 'question_4'
+            elif answer_number == 4:
+                update_data['session_status'] = 'question_5'
+            elif answer_number == 5:
+                update_data['session_status'] = 'question_6'
+            elif answer_number == 6:
                 update_data['session_status'] = 'generating'
                 update_data['n8n_webhook_sent_at'] = 'now()'
             
@@ -378,7 +384,7 @@ class Database:
         """
         try:
             result = self.supabase.table('button_post_creation_sessions').select(
-                'answer_1, answer_2, answer_3'
+                'answer_1, answer_2, answer_3, answer_4, answer_5, answer_6'
             ).eq('id', session_id).execute()
             
             if result.data:
@@ -386,7 +392,10 @@ class Database:
                 return {
                     'answer_1': data.get('answer_1'),
                     'answer_2': data.get('answer_2'),
-                    'answer_3': data.get('answer_3')
+                    'answer_3': data.get('answer_3'),
+                    'answer_4': data.get('answer_4'),
+                    'answer_5': data.get('answer_5'),
+                    'answer_6': data.get('answer_6')
                 }
             return None
             
@@ -409,6 +418,14 @@ class Database:
                 'answer_1': None,
                 'answer_2': None,
                 'answer_3': None,
+                'answer_4': None,
+                'answer_5': None,
+                'answer_6': None,
+                'link_1': None,
+                'link_2': None,
+                'link_3': None,
+                'link_4': None,
+                'link_5': None,
                 'generated_post': None,
                 'session_status': 'question_1',
                 'n8n_webhook_sent_at': None
@@ -421,6 +438,68 @@ class Database:
             
         except Exception as e:
             logger.error(f"Ошибка при очистке ответов в сессии {session_id}: {e}")
+            return False
+
+    async def get_session_links(self, session_id: int) -> Optional[Dict[str, str]]:
+        """
+        Получение ссылок из сессии
+        
+        Args:
+            session_id (int): ID сессии
+            
+        Returns:
+            Optional[Dict]: Словарь со ссылками или None
+        """
+        try:
+            result = self.supabase.table('button_post_creation_sessions').select(
+                'link_1, link_2, link_3, link_4, link_5'
+            ).eq('id', session_id).execute()
+            
+            if result.data:
+                data = result.data[0]
+                return {
+                    'link_1': data.get('link_1'),
+                    'link_2': data.get('link_2'),
+                    'link_3': data.get('link_3'),
+                    'link_4': data.get('link_4'),
+                    'link_5': data.get('link_5')
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении ссылок из сессии {session_id}: {e}")
+            return None
+
+    async def update_session_link(self, session_id: int, link_number: int, link_url: str) -> bool:
+        """
+        Обновление ссылки в сессии
+        
+        Args:
+            session_id (int): ID сессии
+            link_number (int): Номер ссылки (1-5)
+            link_url (str): URL ссылки
+            
+        Returns:
+            bool: True если обновление успешно
+        """
+        try:
+            if link_number < 1 or link_number > 5:
+                logger.error(f"Неверный номер ссылки: {link_number}")
+                return False
+            
+            update_data = {f'link_{link_number}': link_url}
+            
+            result = self.supabase.table('button_post_creation_sessions').update(
+                update_data
+            ).eq('id', session_id).execute()
+            
+            if result.data:
+                logger.info(f"Обновлена ссылка {link_number} в сессии {session_id}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении ссылки {link_number} в сессии {session_id}: {e}")
             return False
 
     async def get_expired_generating_sessions(self, timeout_minutes: int = 3) -> List[Dict[str, Any]]:

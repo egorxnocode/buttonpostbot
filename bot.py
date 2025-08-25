@@ -152,8 +152,10 @@ class TelegramBot:
                 # Обрабатываем ответ в рамках сессии создания поста
                 session_status = active_session['session_status']
                 
-                if session_status in ['question_1', 'question_2', 'question_3']:
+                if session_status in ['question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6']:
                     await self._handle_post_creation_answer(update, message_text, user_data, active_session)
+                elif session_status == 'collecting_links':
+                    await self._handle_link_input(update, message_text, user_data, active_session)
                 elif session_status == 'button_config':
                     await self._handle_button_config_input(update, message_text, user_data, active_session)
                 elif session_status == 'button_text_selection':
@@ -300,6 +302,8 @@ class TelegramBot:
             await self._handle_final_post_approval(query, user)
         elif query.data == "final_post_rejected":
             await self._handle_final_post_rejection(query, user)
+        elif query.data == "skip_links":
+            await self._handle_skip_links(query, user)
 
     async def _check_admin_rights(self, query, user):
         """Проверка прав администратора бота в канале"""
@@ -497,7 +501,16 @@ class TelegramBot:
             next_message = MESSAGES['question_3']
         elif session_status == 'question_3':
             question_num = 3
-            next_message = MESSAGES['generating_post']
+            next_message = MESSAGES['question_4']
+        elif session_status == 'question_4':
+            question_num = 4
+            next_message = MESSAGES['question_5']
+        elif session_status == 'question_5':
+            question_num = 5
+            next_message = MESSAGES['question_6']
+        elif session_status == 'question_6':
+            question_num = 6
+            next_message = MESSAGES['links_collection_start']
         else:
             # Неожиданный статус
             await update.message.reply_text(
@@ -517,13 +530,13 @@ class TelegramBot:
         
         logger.info(f"Сохранен ответ {question_num} в сессии {session_id}: {message_text[:50]}...")
         
-        # Отправляем следующий вопрос или начинаем генерацию
-        if question_num < 3:
+        # Отправляем следующий вопрос или переходим к сбору ссылок
+        if question_num < 6:
             await update.message.reply_text(next_message)
         else:
-            # Все три ответа получены, начинаем генерацию
+            # Все шесть ответов получены, переходим к сбору ссылок
             await update.message.reply_text(next_message)
-            await self._start_post_generation(update, user_data, session_id)
+            await self._start_links_collection(update, user_data, session_id)
 
     async def _start_post_generation(self, update: Update, user_data: dict, session_id: int):
         """Начало генерации поста через n8n"""
@@ -536,8 +549,11 @@ class TelegramBot:
                 await update.message.reply_text(MESSAGES['generation_error'])
                 return
             
+            # Получаем ссылки из сессии
+            links = await self.db.get_session_links(session_id)
+            
             # Отправляем запрос в n8n
-            success = await self.n8n_client.send_post_generation_request(user_data, answers, session_id)
+            success = await self.n8n_client.send_post_generation_request(user_data, answers, links, session_id)
             
             if not success:
                 await update.message.reply_text(MESSAGES['generation_error'])
@@ -790,7 +806,7 @@ class TelegramBot:
             session_status = active_session.get('session_status')
             
             # Статусы, когда можно отправлять голосовые сообщения
-            question_statuses = ['question_1', 'question_2', 'question_3']
+            question_statuses = ['question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6']
             
             return session_status in question_statuses
             
@@ -1206,6 +1222,131 @@ class TelegramBot:
         except Exception as e:
             logger.error(f"Ошибка при публикации поста в канале: {e}")
             return False
+
+    async def _start_links_collection(self, update: Update, user_data: dict, session_id: int):
+        """Начало сбора ссылок"""
+        
+        try:
+            # Обновляем статус сессии на сбор ссылок
+            await self.db.update_session_status(session_id, 'collecting_links')
+            
+            # Отправляем запрос первой ссылки с кнопкой "Пропустить"
+            await asyncio.sleep(1)
+            await self._send_link_request(update.message, 1)
+            
+            logger.info(f"Начат сбор ссылок для сессии {session_id}")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при начале сбора ссылок для сессии {session_id}: {e}")
+            await update.message.reply_text(
+                "❌ Произошла ошибка. Попробуйте создать пост заново.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+
+    def _get_skip_keyboard(self):
+        """Получить клавиатуру с кнопкой 'Пропустить'"""
+        keyboard = [[
+            InlineKeyboardButton("⏭️ Пропустить", callback_data="skip_links")
+        ]]
+        return InlineKeyboardMarkup(keyboard)
+
+    async def _send_link_request(self, message, link_number: int):
+        """Отправить запрос на ссылку с соответствующим номером"""
+        
+        message_key = f'link_request_{link_number}'
+        text = MESSAGES.get(message_key, f"🔗 Пришлите ссылку {link_number} из 5 или нажмите 'Пропустить'.")
+        
+        await message.reply_text(
+            text,
+            reply_markup=self._get_skip_keyboard()
+        )
+
+    async def _handle_link_input(self, update: Update, message_text: str, user_data: dict, active_session: dict):
+        """Обработка ввода ссылки пользователем"""
+        
+        session_id = active_session['id']
+        link_url = message_text.strip()
+        
+        # Проверяем валидность ссылки
+        if not is_valid_url(link_url):
+            await update.message.reply_text(MESSAGES['invalid_link'], reply_markup=self._get_skip_keyboard())
+            return
+        
+        # Определяем какая это ссылка по порядку
+        session_links = await self.db.get_session_links(session_id)
+        current_link_number = self._get_next_link_number(session_links)
+        
+        if current_link_number > 5:
+            # Уже 5 ссылок, завершаем сбор
+            await self._finish_links_collection(update, user_data, session_id)
+            return
+        
+        # Сохраняем ссылку
+        success = await self.db.update_session_link(session_id, current_link_number, link_url)
+        
+        if not success:
+            await update.message.reply_text("❌ Ошибка при сохранении ссылки. Попробуйте еще раз.")
+            return
+        
+        logger.info(f"Сохранена ссылка {current_link_number} в сессии {session_id}: {link_url}")
+        
+        # Проверяем, нужно ли запрашивать следующую ссылку
+        if current_link_number < 5:
+            # Запрашиваем следующую ссылку
+            await self._send_link_request(update.message, current_link_number + 1)
+        else:
+            # Собрали все 5 ссылок, завершаем
+            await self._finish_links_collection(update, user_data, session_id)
+
+    async def _handle_skip_links(self, query, user):
+        """Обработка нажатия кнопки 'Пропустить'"""
+        
+        # Получаем активную сессию
+        active_session = await self.db.get_active_post_session(user.id)
+        
+        if not active_session or active_session['session_status'] != 'collecting_links':
+            await query.edit_message_text(
+                "❌ Сессия не найдена или завершена.",
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
+        # Получаем данные пользователя
+        user_data = await self.db.get_user_by_telegram_id(user.id)
+        
+        await query.edit_message_text("⏭️ Пропускаем сбор ссылок...")
+        
+        # Завершаем сбор ссылок и переходим к генерации
+        await self._finish_links_collection_from_query(query, user_data, active_session['id'])
+        
+        logger.info(f"Пользователь пропустил сбор ссылок для сессии {active_session['id']}")
+
+    def _get_next_link_number(self, session_links: dict) -> int:
+        """Определить номер следующей ссылки для сохранения"""
+        
+        for i in range(1, 6):
+            if not session_links.get(f'link_{i}'):
+                return i
+        return 6  # Все ссылки заполнены
+
+    async def _finish_links_collection(self, update: Update, user_data: dict, session_id: int):
+        """Завершение сбора ссылок и переход к генерации поста"""
+        
+        await update.message.reply_text(MESSAGES['generating_post'])
+        await self._start_post_generation(update, user_data, session_id)
+
+    async def _finish_links_collection_from_query(self, query, user_data: dict, session_id: int):
+        """Завершение сбора ссылок и переход к генерации поста (из callback query)"""
+        
+        await query.message.reply_text(MESSAGES['generating_post'])
+        
+        # Создаем фейковый update объект для совместимости
+        class FakeUpdate:
+            def __init__(self, message):
+                self.message = message
+        
+        fake_update = FakeUpdate(query.message)
+        await self._start_post_generation(fake_update, user_data, session_id)
 
     def run(self):
         """Запуск бота"""
