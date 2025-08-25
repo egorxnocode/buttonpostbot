@@ -362,7 +362,8 @@ class Database:
                 'session_status': 'cancelled'
             }).eq('telegram_id', telegram_id).in_(
                 'session_status', 
-                ['started', 'question_1', 'question_2', 'question_3', 'generating', 'reviewing']
+                ['started', 'question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6',
+                 'collecting_links', 'generating', 'reviewing']
             ).execute()
             
             logger.info(f"Отменены активные сессии для пользователя {telegram_id}")

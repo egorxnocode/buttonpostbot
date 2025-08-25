@@ -552,6 +552,9 @@ class TelegramBot:
             # Получаем ссылки из сессии
             links = await self.db.get_session_links(session_id)
             
+            # Устанавливаем статус генерации
+            await self.db.update_session_status(session_id, 'generating')
+            
             # Отправляем запрос в n8n
             success = await self.n8n_client.send_post_generation_request(user_data, answers, links, session_id)
             
