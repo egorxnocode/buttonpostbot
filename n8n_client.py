@@ -34,7 +34,7 @@ class N8NClient:
             return False
 
         try:
-            # Фильтруем пустые материалы и формируем массив с описаниями
+            # Фильтруем пустые материалы и формируем массив строк "описание + ссылка"
             filtered_materials = []
             if links:
                 for i in range(1, 6):
@@ -43,10 +43,9 @@ class N8NClient:
                         description = link_data.get('description', '').strip()
                         url = link_data.get('url', '').strip()
                         if description and url:
-                            filtered_materials.append({
-                                "description": description,
-                                "url": url
-                            })
+                            # Объединяем описание и ссылку в одну строку
+                            material_string = f"{description} {url}"
+                            filtered_materials.append(material_string)
 
             payload = {
                 "user": {
@@ -63,7 +62,7 @@ class N8NClient:
                     "main_service": answers.get('answer_4'),
                     "what_exclude": answers.get('answer_5')
                 },
-                "materials": filtered_materials,  # Массив с материалами (описание + ссылка, до 5 штук)
+                "materials": filtered_materials,  # Массив строк "описание + ссылка" (до 5 штук)
                 "request_type": "generate_post",
                 "session_id": session_id,
                 "timestamp": asyncio.get_event_loop().time()
