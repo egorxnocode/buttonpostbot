@@ -55,8 +55,7 @@ class N8NClient:
                     "target_clients": answers.get('answer_2'),
                     "results_timeline": answers.get('answer_3'),
                     "main_service": answers.get('answer_4'),
-                    "what_exclude": answers.get('answer_5'),
-                    "popular_posts": answers.get('answer_6')
+                    "what_exclude": answers.get('answer_5')
                 },
                 "links": filtered_links,  # Массив со ссылками (до 5 штук)
                 "request_type": "generate_post",

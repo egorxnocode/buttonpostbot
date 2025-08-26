@@ -152,7 +152,7 @@ class TelegramBot:
                 # Обрабатываем ответ в рамках сессии создания поста
                 session_status = active_session['session_status']
                 
-                if session_status in ['question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6']:
+                if session_status in ['question_1', 'question_2', 'question_3', 'question_4', 'question_5']:
                     await self._handle_post_creation_answer(update, message_text, user_data, active_session)
                 elif session_status == 'collecting_links':
                     await self._handle_link_input(update, message_text, user_data, active_session)
@@ -507,9 +507,6 @@ class TelegramBot:
             next_message = MESSAGES['question_5']
         elif session_status == 'question_5':
             question_num = 5
-            next_message = MESSAGES['question_6']
-        elif session_status == 'question_6':
-            question_num = 6
             next_message = MESSAGES['links_collection_start']
         else:
             # Неожиданный статус
@@ -531,10 +528,10 @@ class TelegramBot:
         logger.info(f"Сохранен ответ {question_num} в сессии {session_id}: {message_text[:50]}...")
         
         # Отправляем следующий вопрос или переходим к сбору ссылок
-        if question_num < 6:
+        if question_num < 5:
             await update.message.reply_text(next_message)
         else:
-            # Все шесть ответов получены, переходим к сбору ссылок
+            # Все пять ответов получены, переходим к сбору ссылок
             await update.message.reply_text(next_message)
             await self._start_links_collection(update, user_data, session_id)
 
@@ -809,7 +806,7 @@ class TelegramBot:
             session_status = active_session.get('session_status')
             
             # Статусы, когда можно отправлять голосовые сообщения
-            question_statuses = ['question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6']
+            question_statuses = ['question_1', 'question_2', 'question_3', 'question_4', 'question_5']
             
             return session_status in question_statuses
             

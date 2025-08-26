@@ -260,7 +260,7 @@ class Database:
                 'telegram_id', telegram_id
             ).in_(
                 'session_status', 
-                ['started', 'question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6', 
+                ['started', 'question_1', 'question_2', 'question_3', 'question_4', 'question_5', 
                  'collecting_links', 'generating', 'reviewing', 'button_type_selection', 'button_config', 
                  'button_text_selection', 'final_review']
             ).order('created_at', desc=True).limit(1).execute()
@@ -279,7 +279,7 @@ class Database:
         
         Args:
             session_id (int): ID сессии
-            answer_number (int): Номер вопроса (1, 2, 3, 4, 5, 6)
+            answer_number (int): Номер вопроса (1, 2, 3, 4, 5)
             answer (str): Ответ пользователя
             
         Returns:
@@ -298,8 +298,6 @@ class Database:
             elif answer_number == 4:
                 update_data['session_status'] = 'question_5'
             elif answer_number == 5:
-                update_data['session_status'] = 'question_6'
-            elif answer_number == 6:
                 update_data['session_status'] = 'collecting_links'
             
             result = self.supabase.table('button_post_creation_sessions').update(
@@ -362,7 +360,7 @@ class Database:
                 'session_status': 'cancelled'
             }).eq('telegram_id', telegram_id).in_(
                 'session_status', 
-                ['started', 'question_1', 'question_2', 'question_3', 'question_4', 'question_5', 'question_6',
+                ['started', 'question_1', 'question_2', 'question_3', 'question_4', 'question_5',
                  'collecting_links', 'generating', 'reviewing']
             ).execute()
             
@@ -385,7 +383,7 @@ class Database:
         """
         try:
             result = self.supabase.table('button_post_creation_sessions').select(
-                'answer_1, answer_2, answer_3, answer_4, answer_5, answer_6'
+                'answer_1, answer_2, answer_3, answer_4, answer_5'
             ).eq('id', session_id).execute()
             
             if result.data:
@@ -395,8 +393,7 @@ class Database:
                     'answer_2': data.get('answer_2'),
                     'answer_3': data.get('answer_3'),
                     'answer_4': data.get('answer_4'),
-                    'answer_5': data.get('answer_5'),
-                    'answer_6': data.get('answer_6')
+                    'answer_5': data.get('answer_5')
                 }
             return None
             
@@ -421,7 +418,7 @@ class Database:
                 'answer_3': None,
                 'answer_4': None,
                 'answer_5': None,
-                'answer_6': None,
+
                 'link_1': None,
                 'link_2': None,
                 'link_3': None,
