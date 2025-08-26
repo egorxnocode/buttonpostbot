@@ -33,7 +33,9 @@ from utils import (
     is_valid_url,
     is_valid_username_or_userid,
     format_telegram_dm_url,
-    get_default_button_texts
+    get_default_button_texts,
+    extract_description_and_link,
+    validate_description_and_link
 )
 from n8n_client import N8NClient
 from admin_notifier import AdminNotifier
@@ -1262,14 +1264,15 @@ class TelegramBot:
         )
 
     async def _handle_link_input(self, update: Update, message_text: str, user_data: dict, active_session: dict):
-        """Обработка ввода ссылки пользователем"""
+        """Обработка ввода описания + ссылки пользователем"""
         
         session_id = active_session['id']
-        link_url = message_text.strip()
         
-        # Проверяем валидность ссылки
-        if not is_valid_url(link_url):
-            await update.message.reply_text(MESSAGES['invalid_link'], reply_markup=self._get_skip_keyboard())
+        # Извлекаем описание и ссылку из текста
+        link_data = extract_description_and_link(message_text)
+        
+        if not link_data:
+            await update.message.reply_text(MESSAGES['invalid_link_format'], reply_markup=self._get_skip_keyboard())
             return
         
         # Определяем какая это ссылка по порядку
@@ -1281,14 +1284,14 @@ class TelegramBot:
             await self._finish_links_collection(update, user_data, session_id)
             return
         
-        # Сохраняем ссылку
-        success = await self.db.update_session_link(session_id, current_link_number, link_url)
+        # Сохраняем описание + ссылку
+        success = await self.db.update_session_link(session_id, current_link_number, link_data)
         
         if not success:
             await update.message.reply_text("❌ Ошибка при сохранении ссылки. Попробуйте еще раз.")
             return
         
-        logger.info(f"Сохранена ссылка {current_link_number} в сессии {session_id}: {link_url}")
+        logger.info(f"Сохранен материал {current_link_number} в сессии {session_id}: {link_data['description'][:30]}... -> {link_data['url']}")
         
         # Проверяем, нужно ли запрашивать следующую ссылку
         if current_link_number < 5:
@@ -1325,7 +1328,8 @@ class TelegramBot:
         """Определить номер следующей ссылки для сохранения"""
         
         for i in range(1, 6):
-            if not session_links.get(f'link_{i}'):
+            link_data = session_links.get(f'link_{i}')
+            if not link_data:
                 return i
         return 6  # Все ссылки заполнены
 

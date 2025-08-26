@@ -438,44 +438,59 @@ class Database:
             logger.error(f"Ошибка при очистке ответов в сессии {session_id}: {e}")
             return False
 
-    async def get_session_links(self, session_id: int) -> Optional[Dict[str, str]]:
+    async def get_session_links(self, session_id: int) -> Optional[Dict[str, dict]]:
         """
-        Получение ссылок из сессии
+        Получение материалов (описание + ссылка) из сессии
         
         Args:
             session_id (int): ID сессии
             
         Returns:
-            Optional[Dict]: Словарь со ссылками или None
+            Optional[Dict]: Словарь с материалами или None
         """
         try:
+            import json
+            
             result = self.supabase.table('button_post_creation_sessions').select(
                 'link_1, link_2, link_3, link_4, link_5'
             ).eq('id', session_id).execute()
             
             if result.data:
                 data = result.data[0]
-                return {
-                    'link_1': data.get('link_1'),
-                    'link_2': data.get('link_2'),
-                    'link_3': data.get('link_3'),
-                    'link_4': data.get('link_4'),
-                    'link_5': data.get('link_5')
-                }
+                links = {}
+                
+                for i in range(1, 6):
+                    link_json = data.get(f'link_{i}')
+                    if link_json:
+                        try:
+                            # Парсим JSON
+                            link_data = json.loads(link_json)
+                            links[f'link_{i}'] = link_data
+                        except json.JSONDecodeError:
+                            # Если это старый формат (просто строка), преобразуем
+                            if link_json.startswith('http'):
+                                links[f'link_{i}'] = {
+                                    "description": "Ссылка",
+                                    "url": link_json
+                                }
+                    else:
+                        links[f'link_{i}'] = None
+                
+                return links
             return None
             
         except Exception as e:
             logger.error(f"Ошибка при получении ссылок из сессии {session_id}: {e}")
             return None
 
-    async def update_session_link(self, session_id: int, link_number: int, link_url: str) -> bool:
+    async def update_session_link(self, session_id: int, link_number: int, link_data: dict) -> bool:
         """
-        Обновление ссылки в сессии
+        Обновление материала (описание + ссылка) в сессии
         
         Args:
             session_id (int): ID сессии
-            link_number (int): Номер ссылки (1-5)
-            link_url (str): URL ссылки
+            link_number (int): Номер материала (1-5)
+            link_data (dict): {"description": "описание", "url": "ссылка"}
             
         Returns:
             bool: True если обновление успешно
@@ -485,7 +500,10 @@ class Database:
                 logger.error(f"Неверный номер ссылки: {link_number}")
                 return False
             
-            update_data = {f'link_{link_number}': link_url}
+            # Сохраняем как JSON строку
+            import json
+            link_json = json.dumps(link_data, ensure_ascii=False)
+            update_data = {f'link_{link_number}': link_json}
             
             result = self.supabase.table('button_post_creation_sessions').update(
                 update_data

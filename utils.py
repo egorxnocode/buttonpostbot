@@ -3,7 +3,7 @@
 """
 import re
 import logging
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 import validators
 
 logger = logging.getLogger(__name__)
@@ -261,3 +261,64 @@ def get_default_button_texts(button_type: str) -> list:
         ]
     else:
         return ["📝 Подробнее"]
+
+def extract_description_and_link(text: str) -> Optional[Dict[str, str]]:
+    """
+    Извлечение описания и ссылки из текста пользователя
+    
+    Args:
+        text (str): Текст с описанием и ссылкой
+        
+    Returns:
+        Optional[Dict]: {"description": "описание", "url": "ссылка"} или None
+    """
+    try:
+        text = text.strip()
+        
+        # Ищем URL в тексте
+        url_pattern = r'https?://[^\s]+'
+        urls = re.findall(url_pattern, text)
+        
+        if not urls:
+            return None
+        
+        # Берем первый найденный URL
+        url = urls[0]
+        
+        # Проверяем валидность URL
+        if not is_valid_url(url):
+            return None
+        
+        # Извлекаем описание (текст до ссылки)
+        description = text.replace(url, '').strip()
+        
+        # Убираем лишние пробелы и переносы строк
+        description = re.sub(r'\s+', ' ', description).strip()
+        
+        # Проверяем что описание не пустое
+        if not description or len(description) < 3:
+            return None
+        
+        logger.info(f"Извлечены: описание='{description[:50]}...', url='{url}'")
+        
+        return {
+            "description": description,
+            "url": url
+        }
+        
+    except Exception as e:
+        logger.error(f"Ошибка при извлечении описания и ссылки: {e}")
+        return None
+
+def validate_description_and_link(text: str) -> bool:
+    """
+    Проверка что текст содержит описание и ссылку в правильном формате
+    
+    Args:
+        text (str): Текст для проверки
+        
+    Returns:
+        bool: True если формат корректный
+    """
+    result = extract_description_and_link(text)
+    return result is not None

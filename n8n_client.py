@@ -34,13 +34,19 @@ class N8NClient:
             return False
 
         try:
-            # Фильтруем пустые ссылки
-            filtered_links = []
+            # Фильтруем пустые материалы и формируем массив с описаниями
+            filtered_materials = []
             if links:
                 for i in range(1, 6):
-                    link = links.get(f'link_{i}')
-                    if link and link.strip():
-                        filtered_links.append(link.strip())
+                    link_data = links.get(f'link_{i}')
+                    if link_data and isinstance(link_data, dict):
+                        description = link_data.get('description', '').strip()
+                        url = link_data.get('url', '').strip()
+                        if description and url:
+                            filtered_materials.append({
+                                "description": description,
+                                "url": url
+                            })
 
             payload = {
                 "user": {
@@ -57,7 +63,7 @@ class N8NClient:
                     "main_service": answers.get('answer_4'),
                     "what_exclude": answers.get('answer_5')
                 },
-                "links": filtered_links,  # Массив со ссылками (до 5 штук)
+                "materials": filtered_materials,  # Массив с материалами (описание + ссылка, до 5 штук)
                 "request_type": "generate_post",
                 "session_id": session_id,
                 "timestamp": asyncio.get_event_loop().time()
