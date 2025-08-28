@@ -634,3 +634,92 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка при получении сессии по ID {session_id}: {e}")
             return None
+
+    async def get_user_post_count(self, telegram_id: int) -> int:
+        """
+        Получение количества опубликованных постов пользователя
+        
+        Args:
+            telegram_id (int): Telegram ID пользователя
+            
+        Returns:
+            int: Количество постов (0 если пользователь не найден)
+        """
+        try:
+            result = self.supabase.table('button_users').select('post_count').eq(
+                'telegram_id', telegram_id
+            ).execute()
+            
+            if result.data and len(result.data) > 0:
+                return result.data[0].get('post_count', 0)
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Ошибка при получении количества постов для пользователя {telegram_id}: {e}")
+            return 0
+
+    async def increment_user_post_count(self, telegram_id: int) -> bool:
+        """
+        Увеличение счетчика постов пользователя на 1
+        
+        Args:
+            telegram_id (int): Telegram ID пользователя
+            
+        Returns:
+            bool: True если обновление успешно
+        """
+        try:
+            # Получаем текущее количество постов
+            current_count = await self.get_user_post_count(telegram_id)
+            
+            # Увеличиваем на 1
+            new_count = current_count + 1
+            
+            # Обновляем в базе
+            result = self.supabase.table('button_users').update({
+                'post_count': new_count
+            }).eq('telegram_id', telegram_id).execute()
+            
+            if result.data:
+                logger.info(f"Счетчик постов увеличен до {new_count} для пользователя {telegram_id}")
+                return True
+            return False
+            
+        except Exception as e:
+            logger.error(f"Ошибка при увеличении счетчика постов для пользователя {telegram_id}: {e}")
+            return False
+
+    async def check_post_limit(self, telegram_id: int, max_posts: int = 3) -> Dict[str, Any]:
+        """
+        Проверка лимита постов для пользователя
+        
+        Args:
+            telegram_id (int): Telegram ID пользователя
+            max_posts (int): Максимальное количество постов (по умолчанию 3)
+            
+        Returns:
+            Dict: Результат проверки с полями:
+                - can_post (bool): Может ли пользователь создать пост
+                - current_count (int): Текущее количество постов
+                - remaining (int): Сколько постов осталось
+        """
+        try:
+            current_count = await self.get_user_post_count(telegram_id)
+            remaining = max(0, max_posts - current_count)
+            can_post = current_count < max_posts
+            
+            return {
+                'can_post': can_post,
+                'current_count': current_count,
+                'remaining': remaining,
+                'max_posts': max_posts
+            }
+            
+        except Exception as e:
+            logger.error(f"Ошибка при проверке лимита постов для пользователя {telegram_id}: {e}")
+            return {
+                'can_post': False,
+                'current_count': 0,
+                'remaining': 0,
+                'max_posts': max_posts
+            }

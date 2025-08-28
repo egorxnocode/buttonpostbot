@@ -94,7 +94,8 @@ class WebhookHandler:
                 chat_id=telegram_id,
                 text=review_message,
                 reply_markup=reply_markup,
-                parse_mode='HTML'
+                parse_mode='HTML',
+                disable_web_page_preview=True
             )
             
         except Exception as e:

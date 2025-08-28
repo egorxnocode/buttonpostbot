@@ -102,10 +102,22 @@ class TelegramBot:
         user_data = await self.db.get_user_by_telegram_id(user.id)
         
         if user_data and user_data['registration_step'] == REGISTRATION_STEPS['COMPLETED']:
+            # Получаем информацию о лимите постов
+            post_limit_check = await self.db.check_post_limit(user.id)
+            
+            welcome_message = "🎉 Вы уже зарегистрированы!\n\n"
+            welcome_message += f"📊 Использовано {post_limit_check['current_count']} из {post_limit_check['max_posts']} постов"
+            
+            if post_limit_check['remaining'] > 0:
+                welcome_message += f". Осталось: {post_limit_check['remaining']}\n\n"
+                welcome_message += "Используйте кнопку ниже для создания постов:"
+            else:
+                welcome_message += f"\n\n🚫 Лимит постов исчерпан. Больше постов создать нельзя."
+            
             await update.message.reply_text(
-                "🎉 Вы уже зарегистрированы!\n\n"
-                "Используйте кнопку ниже для создания постов:",
-                reply_markup=self._get_registered_user_keyboard()
+                welcome_message,
+                reply_markup=self._get_registered_user_keyboard(),
+                disable_web_page_preview=True
             )
             return
         
@@ -184,10 +196,22 @@ class TelegramBot:
                         # Напоминаем о необходимости подтверждения прав админа
                         await self._show_admin_reminder(update, user_data)
                 elif step == REGISTRATION_STEPS['COMPLETED']:
+                    # Получаем информацию о лимите постов
+                    post_limit_check = await self.db.check_post_limit(user.id)
+                    
+                    registered_message = "✅ Вы уже зарегистрированы!\n\n"
+                    registered_message += f"📊 Использовано {post_limit_check['current_count']} из {post_limit_check['max_posts']} постов"
+                    
+                    if post_limit_check['remaining'] > 0:
+                        registered_message += f". Осталось: {post_limit_check['remaining']}\n\n"
+                        registered_message += "Используйте кнопку ниже для создания постов:"
+                    else:
+                        registered_message += f"\n\n🚫 Лимит постов исчерпан. Больше постов создать нельзя."
+                    
                     await update.message.reply_text(
-                        "✅ Вы уже зарегистрированы!\n\n"
-                        "Используйте кнопку ниже для создания постов:",
-                        reply_markup=self._get_registered_user_keyboard()
+                        registered_message,
+                        reply_markup=self._get_registered_user_keyboard(),
+                        disable_web_page_preview=True
                     )
                 else:
                     await update.message.reply_text(
@@ -275,7 +299,8 @@ class TelegramBot:
         await update.message.reply_text(
             instructions,
             reply_markup=keyboard,
-            parse_mode='Markdown'
+            parse_mode='Markdown',
+            disable_web_page_preview=True
         )
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -337,7 +362,8 @@ class TelegramBot:
             await query.edit_message_text(
                 admin_check_result['message'],
                 reply_markup=admin_check_result.get('reply_markup'),
-                parse_mode='Markdown'
+                parse_mode='Markdown',
+                disable_web_page_preview=True
             )
 
     async def _handle_write_post(self, query, user):
@@ -353,6 +379,21 @@ class TelegramBot:
             )
             return
         
+        # Проверяем лимит постов перед созданием
+        post_limit_check = await self.db.check_post_limit(user.id)
+        
+        if not post_limit_check['can_post']:
+            # Лимит исчерпан - показываем сообщение об ограничении
+            limit_message = MESSAGES['post_limit_reached'].format(
+                current_count=post_limit_check['current_count'],
+                max_posts=post_limit_check['max_posts']
+            )
+            await query.edit_message_text(
+                limit_message,
+                reply_markup=self._get_registered_user_keyboard()
+            )
+            return
+        
         # Проверяем права администратора в канале перед созданием поста
         admin_check_result = await self._check_admin_rights_for_channel(user_data)
         
@@ -360,7 +401,8 @@ class TelegramBot:
             await query.edit_message_text(
                 admin_check_result['message'],
                 reply_markup=admin_check_result.get('reply_markup'),
-                parse_mode='Markdown'
+                parse_mode='Markdown',
+                disable_web_page_preview=True
             )
             return
         
@@ -599,7 +641,8 @@ class TelegramBot:
                 await self.application.bot.send_message(
                     chat_id=user_data['telegram_id'],
                     text=MESSAGES['generation_timeout'],
-                    reply_markup=self._get_registered_user_keyboard()
+                    reply_markup=self._get_registered_user_keyboard(),
+                    disable_web_page_preview=True
                 )
             except Exception as e:
                 logger.error(f"Ошибка при отправке сообщения о таймауте пользователю {user_data['telegram_id']}: {e}")
@@ -1092,7 +1135,8 @@ class TelegramBot:
             await message.reply_text(
                 post_content,
                 reply_markup=preview_markup,
-                parse_mode='HTML'
+                parse_mode='HTML',
+                disable_web_page_preview=True
             )
             
             # Спрашиваем подтверждение
@@ -1135,12 +1179,30 @@ class TelegramBot:
         success = await self._publish_post_to_channel(active_session['id'], user.id)
         
         if success:
+            # Увеличиваем счетчик постов пользователя
+            increment_success = await self.db.increment_user_post_count(user.id)
+            if increment_success:
+                logger.info(f"Счетчик постов увеличен для пользователя {user.id}")
+            else:
+                logger.warning(f"Не удалось увеличить счетчик постов для пользователя {user.id}")
+            
             # Завершаем сессию
             await self.db.update_session_status(active_session['id'], 'completed')
             
+            # Получаем обновленную информацию о количестве постов для сообщения
+            post_limit_check = await self.db.check_post_limit(user.id)
+            
+            # Формируем сообщение с информацией об оставшихся постах
+            published_message = MESSAGES['post_published']
+            if post_limit_check['remaining'] > 0:
+                published_message += f"\n\n📊 Использовано {post_limit_check['current_count']} из {post_limit_check['max_posts']} постов. Осталось: {post_limit_check['remaining']}"
+            else:
+                published_message += f"\n\n🚫 Это был ваш последний доступный пост ({post_limit_check['max_posts']}/{post_limit_check['max_posts']})"
+            
             await query.message.reply_text(
-                MESSAGES['post_published'],
-                reply_markup=self._get_registered_user_keyboard()
+                published_message,
+                reply_markup=self._get_registered_user_keyboard(),
+                disable_web_page_preview=True
             )
             
             logger.info(f"Пост успешно опубликован для сессии {active_session['id']}")
@@ -1216,7 +1278,8 @@ class TelegramBot:
                 chat_id=f"@{channel_username}",
                 text=session['generated_post'],
                 reply_markup=reply_markup,
-                parse_mode='HTML'
+                parse_mode='HTML',
+                disable_web_page_preview=True
             )
             
             return True
