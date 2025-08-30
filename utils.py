@@ -247,17 +247,19 @@ def get_default_button_texts(button_type: str) -> list:
     """
     if button_type == 'dm':
         return [
-            "💬 Написать в ЛС",
-            "📩 Связаться с нами",
-            "💌 Задать вопрос",
-            "🗣 Обратиться к автору"
+            "ЖМИ",
+            "НАПИСАТЬ",
+            "ЗАПИСЬ",
+            "СКИДКА",
+            "НУЖНА ПОМОЩЬ"
         ]
     elif button_type == 'website':
         return [
-            "🌐 Перейти на сайт",
-            "📖 Узнать больше",
-            "🛒 Купить сейчас",
-            "📋 Подробности"
+            "ЖМИ",
+            "БОНУС",
+            "ЗАБРАТЬ",
+            "СКИДКА",
+            "ХОЧУ!"
         ]
     else:
         return ["📝 Подробнее"]

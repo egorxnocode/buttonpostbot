@@ -296,12 +296,24 @@ class TelegramBot:
             bot_username=self.bot_username
         )
         
-        await update.message.reply_text(
-            instructions,
-            reply_markup=keyboard,
-            parse_mode='Markdown',
-            disable_web_page_preview=True
-        )
+        # Отправляем видео с инструкциями
+        try:
+            with open('assets/channeladmin.mp4', 'rb') as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    caption=instructions,
+                    reply_markup=keyboard,
+                    parse_mode='Markdown'
+                )
+        except FileNotFoundError:
+            # Если видео не найдено, отправляем только текст
+            logger.warning("Видеофайл assets/channeladmin.mp4 не найден, отправляем только текст")
+            await update.message.reply_text(
+                instructions,
+                reply_markup=keyboard,
+                parse_mode='Markdown',
+                disable_web_page_preview=True
+            )
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик нажатий на кнопки"""
@@ -359,11 +371,8 @@ class TelegramBot:
             logger.info(f"Регистрация завершена для пользователя: {format_user_info(user)}")
         else:
             # Прав нет - показываем инструкции
-            await query.edit_message_text(
-                admin_check_result['message'],
-                reply_markup=admin_check_result.get('reply_markup'),
-                parse_mode='Markdown',
-                disable_web_page_preview=True
+            await self._send_admin_instructions_message(
+                query, admin_check_result
             )
 
     async def _handle_write_post(self, query, user):
@@ -398,11 +407,8 @@ class TelegramBot:
         admin_check_result = await self._check_admin_rights_for_channel(user_data)
         
         if not admin_check_result['is_admin']:
-            await query.edit_message_text(
-                admin_check_result['message'],
-                reply_markup=admin_check_result.get('reply_markup'),
-                parse_mode='Markdown',
-                disable_web_page_preview=True
+            await self._send_admin_instructions_message(
+                query, admin_check_result
             )
             return
         
@@ -526,8 +532,46 @@ class TelegramBot:
         return {
             'is_admin': False,
             'message': message.strip(),
-            'reply_markup': keyboard
+            'reply_markup': keyboard,
+            'send_video': True  # Флаг для отправки видео
         }
+
+    async def _send_admin_instructions_message(self, query, admin_check_result: dict):
+        """Отправить сообщение с инструкциями администратора (с видео если нужно)"""
+        
+        message = admin_check_result['message']
+        reply_markup = admin_check_result.get('reply_markup')
+        send_video = admin_check_result.get('send_video', False)
+        
+        if send_video:
+            # Отправляем видео с инструкциями
+            try:
+                with open('assets/channeladmin.mp4', 'rb') as video_file:
+                    await query.message.reply_video(
+                        video=video_file,
+                        caption=message,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown'
+                    )
+                # Удаляем исходное сообщение
+                await query.edit_message_text("📹 Смотрите видео-инструкцию выше ⬆️")
+            except FileNotFoundError:
+                # Если видео не найдено, отправляем только текст
+                logger.warning("Видеофайл assets/channeladmin.mp4 не найден, отправляем только текст")
+                await query.edit_message_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
+        else:
+            # Отправляем только текст
+            await query.edit_message_text(
+                message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown',
+                disable_web_page_preview=True
+            )
 
     async def _handle_post_creation_answer(self, update: Update, message_text: str, 
                                          user_data: dict, active_session: dict):
@@ -744,10 +788,21 @@ class TelegramBot:
 💡 Если хотите изменить канал, отправьте новую ссылку в формате @channel_name или https://t.me/channel_name
         """
         
-        await update.message.reply_text(
-            reminder_message.strip(),
-            reply_markup=keyboard
-        )
+        # Отправляем видео с напоминанием
+        try:
+            with open('assets/channeladmin.mp4', 'rb') as video_file:
+                await update.message.reply_video(
+                    video=video_file,
+                    caption=reminder_message.strip(),
+                    reply_markup=keyboard
+                )
+        except FileNotFoundError:
+            # Если видео не найдено, отправляем только текст
+            logger.warning("Видеофайл assets/channeladmin.mp4 не найден, отправляем только текст")
+            await update.message.reply_text(
+                reminder_message.strip(),
+                reply_markup=keyboard
+            )
 
     async def handle_voice_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик голосовых сообщений"""
@@ -1199,11 +1254,22 @@ class TelegramBot:
             else:
                 published_message += f"\n\n🚫 Это был ваш последний доступный пост ({post_limit_check['max_posts']}/{post_limit_check['max_posts']})"
             
-            await query.message.reply_text(
-                published_message,
-                reply_markup=self._get_registered_user_keyboard(),
-                disable_web_page_preview=True
-            )
+            # Отправляем видео с инструкциями по закреплению поста
+            try:
+                with open('assets/pinned.mp4', 'rb') as video_file:
+                    await query.message.reply_video(
+                        video=video_file,
+                        caption=published_message,
+                        reply_markup=self._get_registered_user_keyboard()
+                    )
+            except FileNotFoundError:
+                # Если видео не найдено, отправляем только текст
+                logger.warning("Видеофайл assets/pinned.mp4 не найден, отправляем только текст")
+                await query.message.reply_text(
+                    published_message,
+                    reply_markup=self._get_registered_user_keyboard(),
+                    disable_web_page_preview=True
+                )
             
             logger.info(f"Пост успешно опубликован для сессии {active_session['id']}")
         else:
