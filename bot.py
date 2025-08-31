@@ -362,34 +362,57 @@ class TelegramBot:
                 )
             return
         
+        # Показываем индикатор "печатает"
+        await query.message.chat.send_action("typing")
+        
+        # Пытаемся удалить сообщение с кнопкой
+        message_deleted = False
         try:
-            await query.edit_message_text(MESSAGES['checking_admin'])
+            await query.message.delete()
+            message_deleted = True
         except Exception:
-            # Если не удается редактировать сообщение (например, это видео), отправляем новое
-            await query.message.reply_text(MESSAGES['checking_admin'])
+            # Если не удается удалить, попробуем отредактировать
+            try:
+                await query.edit_message_text(MESSAGES['checking_admin'])
+            except Exception:
+                # Если ничего не получается, отправляем новое сообщение
+                await query.message.reply_text(MESSAGES['checking_admin'])
+        
+        # Отправляем сообщение о проверке только если исходное сообщение было удалено
+        checking_message = None
+        if message_deleted:
+            checking_message = await query.message.chat.send_message(MESSAGES['checking_admin'])
         
         # Используем новую функцию проверки прав
         admin_check_result = await self._check_admin_rights_for_channel(user_data)
         
         if admin_check_result['is_admin']:
             # Права есть - завершаем регистрацию
-            try:
-                await query.edit_message_text(
-                    MESSAGES['registration_complete'],
-                    reply_markup=self._get_registered_user_keyboard()
-                )
-            except Exception:
-                # Если не удается редактировать сообщение, отправляем новое
-                await query.message.reply_text(
-                    MESSAGES['registration_complete'],
-                    reply_markup=self._get_registered_user_keyboard()
-                )
+            # Удаляем сообщение о проверке, если оно существует
+            if checking_message:
+                try:
+                    await checking_message.delete()
+                except Exception:
+                    pass
+            
+            # Отправляем сообщение о завершении регистрации
+            await query.message.chat.send_message(
+                MESSAGES['registration_complete'],
+                reply_markup=self._get_registered_user_keyboard()
+            )
             
             logger.info(f"Регистрация завершена для пользователя: {format_user_info(user)}")
         else:
-            # Прав нет - показываем инструкции
-            await self._send_admin_instructions_message(
-                query, admin_check_result
+            # Прав нет - удаляем сообщение о проверке и показываем инструкции
+            if checking_message:
+                try:
+                    await checking_message.delete()
+                except Exception:
+                    pass
+            
+            # Отправляем инструкции (они сами обрабатывают отправку видео или текста)
+            await self._send_admin_instructions_message_new(
+                query.message.chat, admin_check_result
             )
 
     async def _handle_write_post(self, query, user):
@@ -611,6 +634,41 @@ class TelegramBot:
                     parse_mode='Markdown',
                     disable_web_page_preview=True
                 )
+
+    async def _send_admin_instructions_message_new(self, chat, admin_check_result: dict):
+        """Отправить сообщение с инструкциями администратора в чат (новая версия без query)"""
+        
+        message = admin_check_result['message']
+        reply_markup = admin_check_result.get('reply_markup')
+        send_video = admin_check_result.get('send_video', False)
+        
+        if send_video:
+            # Отправляем видео с инструкциями
+            try:
+                with open('assets/channeladmin.mp4', 'rb') as video_file:
+                    await chat.send_video(
+                        video=video_file,
+                        caption=message,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown'
+                    )
+            except FileNotFoundError:
+                # Если видео не найдено, отправляем только текст
+                logger.warning("Видеофайл assets/channeladmin.mp4 не найден, отправляем только текст")
+                await chat.send_message(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
+        else:
+            # Отправляем только текст
+            await chat.send_message(
+                message,
+                reply_markup=reply_markup,
+                parse_mode='Markdown',
+                disable_web_page_preview=True
+            )
 
     async def _handle_post_creation_answer(self, update: Update, message_text: str, 
                                          user_data: dict, active_session: dict):
