@@ -351,22 +351,39 @@ class TelegramBot:
         user_data = await self.db.get_user_by_telegram_id(user.id)
         
         if not user_data or not user_data.get('channel_url'):
-            await query.edit_message_text(
-                "❌ Ошибка: данные канала не найдены. Попробуйте начать заново с /start"
-            )
+            try:
+                await query.edit_message_text(
+                    "❌ Ошибка: данные канала не найдены. Попробуйте начать заново с /start"
+                )
+            except Exception:
+                # Если не удается редактировать сообщение (например, это видео), отправляем новое
+                await query.message.reply_text(
+                    "❌ Ошибка: данные канала не найдены. Попробуйте начать заново с /start"
+                )
             return
         
-        await query.edit_message_text(MESSAGES['checking_admin'])
+        try:
+            await query.edit_message_text(MESSAGES['checking_admin'])
+        except Exception:
+            # Если не удается редактировать сообщение (например, это видео), отправляем новое
+            await query.message.reply_text(MESSAGES['checking_admin'])
         
         # Используем новую функцию проверки прав
         admin_check_result = await self._check_admin_rights_for_channel(user_data)
         
         if admin_check_result['is_admin']:
             # Права есть - завершаем регистрацию
-            await query.edit_message_text(
-                MESSAGES['registration_complete'],
-                reply_markup=self._get_registered_user_keyboard()
-            )
+            try:
+                await query.edit_message_text(
+                    MESSAGES['registration_complete'],
+                    reply_markup=self._get_registered_user_keyboard()
+                )
+            except Exception:
+                # Если не удается редактировать сообщение, отправляем новое
+                await query.message.reply_text(
+                    MESSAGES['registration_complete'],
+                    reply_markup=self._get_registered_user_keyboard()
+                )
             
             logger.info(f"Регистрация завершена для пользователя: {format_user_info(user)}")
         else:
@@ -553,25 +570,47 @@ class TelegramBot:
                         reply_markup=reply_markup,
                         parse_mode='Markdown'
                     )
-                # Удаляем исходное сообщение
-                await query.edit_message_text("📹 Смотрите видео-инструкцию выше ⬆️")
+                # Пытаемся заменить исходное сообщение
+                try:
+                    await query.edit_message_text("📹 Смотрите видео-инструкцию выше ⬆️")
+                except Exception:
+                    # Если не удается редактировать (например, исходное сообщение было видео), просто игнорируем
+                    pass
             except FileNotFoundError:
                 # Если видео не найдено, отправляем только текст
                 logger.warning("Видеофайл assets/channeladmin.mp4 не найден, отправляем только текст")
+                try:
+                    await query.edit_message_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown',
+                        disable_web_page_preview=True
+                    )
+                except Exception:
+                    # Если не удается редактировать сообщение, отправляем новое
+                    await query.message.reply_text(
+                        message,
+                        reply_markup=reply_markup,
+                        parse_mode='Markdown',
+                        disable_web_page_preview=True
+                    )
+        else:
+            # Отправляем только текст
+            try:
                 await query.edit_message_text(
                     message,
                     reply_markup=reply_markup,
                     parse_mode='Markdown',
                     disable_web_page_preview=True
                 )
-        else:
-            # Отправляем только текст
-            await query.edit_message_text(
-                message,
-                reply_markup=reply_markup,
-                parse_mode='Markdown',
-                disable_web_page_preview=True
-            )
+            except Exception:
+                # Если не удается редактировать сообщение, отправляем новое
+                await query.message.reply_text(
+                    message,
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown',
+                    disable_web_page_preview=True
+                )
 
     async def _handle_post_creation_answer(self, update: Update, message_text: str, 
                                          user_data: dict, active_session: dict):
