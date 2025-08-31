@@ -418,11 +418,20 @@ class TelegramBot:
     async def _handle_write_post(self, query, user):
         """Обработка нажатия на кнопку 'Написать пост'"""
         
+        # Показываем индикатор "печатает"
+        await query.message.chat.send_action("typing")
+        
         # Проверяем, что пользователь зарегистрирован
         user_data = await self.db.get_user_by_telegram_id(user.id)
         
         if not user_data or user_data['registration_step'] != REGISTRATION_STEPS['COMPLETED']:
-            await query.edit_message_text(
+            # Удаляем исходное сообщение и отправляем новое
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            
+            await query.message.chat.send_message(
                 "❌ Вы не зарегистрированы или регистрация не завершена.\n\n"
                 "Используйте /start для начала регистрации."
             )
@@ -432,12 +441,17 @@ class TelegramBot:
         post_limit_check = await self.db.check_post_limit(user.id)
         
         if not post_limit_check['can_post']:
-            # Лимит исчерпан - показываем сообщение об ограничении
+            # Лимит исчерпан - удаляем исходное сообщение и показываем сообщение об ограничении
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            
             limit_message = MESSAGES['post_limit_reached'].format(
                 current_count=post_limit_check['current_count'],
                 max_posts=post_limit_check['max_posts']
             )
-            await query.edit_message_text(
+            await query.message.chat.send_message(
                 limit_message,
                 reply_markup=self._get_registered_user_keyboard()
             )
@@ -447,8 +461,14 @@ class TelegramBot:
         admin_check_result = await self._check_admin_rights_for_channel(user_data)
         
         if not admin_check_result['is_admin']:
-            await self._send_admin_instructions_message(
-                query, admin_check_result
+            # Удаляем исходное сообщение и показываем инструкции
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            
+            await self._send_admin_instructions_message_new(
+                query.message.chat, admin_check_result
             )
             return
         
@@ -456,18 +476,29 @@ class TelegramBot:
         session_id = await self.db.create_post_session(user_data['id'], user.id)
         
         if not session_id:
-            await query.edit_message_text(
+            # Удаляем исходное сообщение и показываем ошибку
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+            
+            await query.message.chat.send_message(
                 "❌ Произошла ошибка при создании сессии. Попробуйте позже.",
                 reply_markup=self._get_registered_user_keyboard()
             )
             return
         
-        # Отправляем приветственное сообщение и первый вопрос
-        await query.edit_message_text(MESSAGES['post_creation_start'])
+        # Удаляем исходное сообщение и отправляем приветственное сообщение
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        
+        await query.message.chat.send_message(MESSAGES['post_creation_start'])
         
         # Отправляем первый вопрос
         await asyncio.sleep(1)  # Небольшая задержка для лучшего UX
-        await query.message.reply_text(MESSAGES['question_1'])
+        await query.message.chat.send_message(MESSAGES['question_1'])
         
         logger.info(f"Начата сессия создания поста {session_id} для пользователя {format_user_info(user)}")
 
